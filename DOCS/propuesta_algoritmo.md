@@ -1,6 +1,6 @@
 # Propuesta de Algoritmo — Ordenamiento por Selección (Selection Sort)
 
-> **Estado:** Revisado y completado por el Integrante B — listo para solicitud de aprobación en clase (Avance 1).
+> **Estado:** Listo para solicitud de aprobación en clase (Avance 1).
 > El programa ensamblador definitivo (`SRC/programs/selection_sort.asm`) se entrega el Día 4; aquí se fija el diseño que ese programa debe respetar.
 
 ## 1. Justificación y Cumplimiento de Requisitos
