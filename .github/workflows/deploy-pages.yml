@@ -1,0 +1,56 @@
+name: Despliegue a GitHub Pages (Reporte + Simulador)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias y compilar simulador
+        working-directory: SRC
+        run: |
+          npm install
+          npm test
+          npm run build
+
+      - name: Ensamblar sitio estatico (Reporte en / y Simulador en /simulador/)
+        run: |
+          mkdir -p _site/simulador
+          cp -r DOCS/site/* _site/
+          cp -r SRC/simulator/dist/* _site/simulador/
+
+      - name: Subir artefacto para GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

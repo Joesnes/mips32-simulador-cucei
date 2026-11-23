@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reporte Técnico — Simulador MIPS 32 bits (Modalidad B)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="container">
+        <p class="eyebrow">Universidad de Guadalajara · CUCEI · Arquitectura de Computadoras</p>
+        <h1>Sistema MIPS de 32 bits — Modalidad B (Simulador Web Interactivo)</h1>
+        <p class="lead">
+          Ensamblador de 2 pasadas, memoria big-endian de 1 byte por dirección y simulador multiciclo
+          de 5 etapas con visualización interactiva de señales de control, buffers y estado.
+        </p>
+        <div class="cta-row">
+          <a class="btn-primary" href="./simulador/">Abrir Simulador Interactivo →</a>
+          <a class="btn-secondary" href="#arquitectura">Ver Arquitectura</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="objetivos">
+        <h2>1. Introducción y Objetivos</h2>
+        <p>
+          Este reporte técnico documenta el diseño, implementación y validación de un procesador
+          didáctico MIPS de 32 bits en el navegador, demostrando cómo los 32 bits de una instrucción
+          reunidos desde memoria big-endian se decodifican en señales de control y producen cambios
+          verificables en el PC, los buffers intermedios, el banco de registros y la memoria de datos.
+        </p>
+      </section>
+
+      <section id="arquitectura">
+        <h2>2. Diagrama del Datapath, Módulos y Buffers</h2>
+        <p><em>Sección en construcción (Integrante A — Día 7: diagramas SVG propios y tabla de buffers).</em></p>
+      </section>
+
+      <section id="isa">
+        <h2>3. Tabla de Instrucciones (12 instrucciones)</h2>
+        <p><em>Sección en construcción (Integrante B — Día 7: tabla completa con opcodes, functs y señales).</em></p>
+      </section>
+
+      <section id="algoritmo">
+        <h2>4. Algoritmo: Ordenamiento por Selección (Selection Sort)</h2>
+        <p><em>Sección en construcción (Integrante B — Día 7: pseudocódigo, mapa de registros y datos).</em></p>
+      </section>
+
+      <section id="pruebas">
+        <h2>5. Pruebas Reproducibles y Trazas (R, I, J)</h2>
+        <p><em>Sección en construcción (Integrante A y B — Día 7: tabla esperado vs observado y trazas).</em></p>
+      </section>
+
+      <section id="reproduccion">
+        <h2>6. Guía de Reproducción, Referencias y Uso de IA</h2>
+        <ul>
+          <li><strong>MIPS 101</strong> — Nanyang Technological University (referencia visual e interactiva del datapath).</li>
+          <li><strong>Patterson &amp; Hennessy</strong> — <em>Computer Organization and Design</em>, 5.ª edición, capítulo 4.</li>
+          <li><strong>MIPS Technologies</strong> — <em>MIPS32 Architecture for Programmers</em>, volumen II.</li>
+        </ul>
+      </section>
+
+      <section id="conclusiones">
+        <h2>7. Conclusiones Individuales</h2>
+        <p><em>Pendiente de cierre (Día 8).</em></p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p>Proyecto Final de Arquitectura de Computadoras — UdeG / CUCEI · Modalidad B</p>
+      </div>
+    </footer>
+  </body>
+</html>

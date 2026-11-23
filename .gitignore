@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+SRC/node_modules/
+
+# Build outputs
+dist/
+SRC/dist/
+SRC/simulator/dist/
+_site/
+.vite/
+SRC/.vite/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Test / simulation artifacts
+coverage/
+*.vcd
+
+# Copias sueltas en la raiz local (los Verilog de referencia se versionan en RTL/referencia/)
+/*.v
+/*.pdf
