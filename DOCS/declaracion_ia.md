@@ -5,4 +5,5 @@ Conforme a la consigna del proyecto (pág. 7), se documenta por módulo la herra
 | Módulo | Responsable | Herramienta de IA | Propósito | Qué se incorporó / descartó | Cómo se comprobó |
 |---|---|---|---|---|---|
 | Arquitectura inicial, contratos `types.ts`/`isa.ts`, CI/CD y guías de equipo | Integrante A | Antigravity (Gemini) | Diseño de arquitectura modular, verificación de discrepancias en consigna y andamiaje TypeScript/Vite/Vitest | Se incorporó estructura `RTL/DOCS/VERIF/SRC`, contratos de 12 instrucciones y correcciones de `$zero` y `slt` con signo respecto a `BR.v`/`ALU.v`. | `npm run typecheck`, `npm test` (`smoke.test.ts`) y `npm run build`. |
-| *(Completar conforme avancen los módulos del Día 2 al Día 8)* | Integrante A / B | — | — | — | — |
+| Núcleo CPU Día 2 (`memory.ts`, `controlUnit.ts`, `cpu.ts`) y pruebas Tipo R (`isa.test.ts`) | Integrante A | Antigravity (Gemini) | Implementación de memorias big-endian con validación de rango/alineación, unidad de control Tipo R y máquina multiciclo de 5 etapas con buffers | Se incorporó máquina de estados `IF→ID→EX→MEM→WB` con detección de errores sin corromper estado y pruebas unitarias de las 5 instrucciones R. | `npm run typecheck`, `npm test` (`smoke.test.ts` + `isa.test.ts`) y `npm run build`. |
+| *(Completar conforme avancen los módulos del Día 2B al Día 8)* | Integrante A / B | — | — | — | — |
