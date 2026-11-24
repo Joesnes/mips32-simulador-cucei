@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A (Dia 6)
+ * PROPIETARIO: Alejandro Espinoza (Dia 6)
  * Panel de senales de la Unidad de Control y registros intermedios (IF/ID, ID/EX, EX/MEM, MEM/WB).
  */
 import type { CpuSnapshot } from '@core/types';
@@ -16,7 +16,7 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
         Estado CPU: <strong>{snapshot.status}</strong> · Última etapa:{' '}
         <strong>{snapshot.lastStage ?? 'Ninguna (Reset)'}</strong>
       </p>
-      <p className="muted">Panel detallado de señales y buffers pendiente (Integrante A — Día 6).</p>
+      <p className="muted">Panel detallado de señales y buffers pendiente (Alejandro Espinoza — Día 6).</p>
     </div>
   );
 }

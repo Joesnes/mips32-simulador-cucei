@@ -4,8 +4,8 @@
  * ============================================================================
  * ADVERTENCIA DE EQUIPO:
  * Este archivo define las interfaces compartidas entre:
- *   - Integrante A: CPU/Datapath (SRC/core/cpu/), DatapathSVG, ControlSignalsPanel
- *   - Integrante B: Ensamblador (SRC/core/assembler/), EditorControls,
+ *   - Alejandro Espinoza: CPU/Datapath (SRC/core/cpu/), DatapathSVG, ControlSignalsPanel
+ *   - Fares Khalifa: Ensamblador (SRC/core/assembler/), EditorControls,
  *                   MemoryRegistersPanel, InstructionInspector, Programas ASM
  *
  * NO MODIFICAR firmas existentes sin acuerdo previo en PR revisado por ambos.
@@ -201,7 +201,7 @@ export interface CpuSnapshot {
 }
 
 /* ============================================================================
- * CONTRATO DEL ENSAMBLADOR (Integrante B implementa, Integrante A y UI consumen)
+ * CONTRATO DEL ENSAMBLADOR (Fares Khalifa implementa, Alejandro Espinoza y UI consumen)
  * ============================================================================ */
 
 export interface AssemblerDiagnostic {
@@ -248,7 +248,7 @@ export interface AssembleResult {
 }
 
 /* ============================================================================
- * CONTRATO DE DATASETS Y PROGRAMAS DE EJEMPLO (Integrante B)
+ * CONTRATO DE DATASETS Y PROGRAMAS DE EJEMPLO (Fares Khalifa)
  * ============================================================================ */
 
 export interface MemoryWordInit {

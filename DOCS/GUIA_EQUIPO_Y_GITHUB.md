@@ -1,6 +1,6 @@
 # Guía Paso a Paso de Git y GitHub (Para Principiantes)
 
-Esta guía está pensada para que **Integrante A** e **Integrante B** trabajen juntos en GitHub sin experiencia previa, evitando conflictos y manteniendo una actividad equilibrada (50/50) evaluable por el profesor.
+Esta guía está pensada para que **Alejandro Espinoza** e **Fares Khalifa** trabajen juntos en GitHub sin experiencia previa, evitando conflictos y manteniendo una actividad equilibrada (50/50) evaluable por el profesor.
 
 ---
 
@@ -20,7 +20,7 @@ git config --global user.name "Tu Nombre"
 git config --global user.email "tu-correo@ejemplo.com"
 ```
 
-Para descargar el proyecto por primera vez (Integrante B):
+Para descargar el proyecto por primera vez (Fares Khalifa):
 
 ```bash
 git clone https://github.com/Joesnes/mips32-simulador-cucei.git

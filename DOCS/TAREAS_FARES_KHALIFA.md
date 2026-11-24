@@ -1,6 +1,6 @@
-# Guía de Tareas y Contratos — Integrante B
+# Guía de Tareas y Contratos — Fares Khalifa
 
-Este documento describe **exactamente** qué archivos te pertenecen, qué contratos debes respetar y qué entregar cada día (del Día 1 al Día 8) para trabajar en paralelo con el **Integrante A** sin generar conflictos de Git.
+Este documento describe **exactamente** qué archivos te pertenecen, qué contratos debes respetar y qué entregar cada día (del Día 1 al Día 8) para trabajar en paralelo con **Alejandro Espinoza** sin generar conflictos de Git.
 
 ---
 
@@ -13,7 +13,7 @@ Este documento describe **exactamente** qué archivos te pertenecen, qué contra
 ```text
 REGLAS ESTRICTAS DEL REPOSITORIO (NO ROMPER):
 1. Lee primero `SRC/core/types.ts` y `SRC/core/isa.ts`. Son CONTRATOS CONGELADOS: NO los modifiques.
-2. NUNCA edites archivos del Integrante A (`SRC/core/cpu/*`, `SRC/simulator/src/components/DatapathSVG.tsx`, `SRC/simulator/src/components/ControlSignalsPanel.tsx`, `VERIF/tests/isa.test.ts`, `VERIF/tests/integration.test.ts`, `.github/*`).
+2. NUNCA edites archivos de Alejandro Espinoza (`SRC/core/cpu/*`, `SRC/simulator/src/components/DatapathSVG.tsx`, `SRC/simulator/src/components/ControlSignalsPanel.tsx`, `VERIF/tests/isa.test.ts`, `VERIF/tests/integration.test.ts`, `.github/*`).
 3. Respeta EXACTAMENTE la tabla ISA del PDF definida en `SRC/core/isa.ts`:
    - R: add (00/21), sub (00/23), and (00/24), or (00/25), slt (00/2A), shamt=0.
    - I: addi y alias addiu (09), ori (0D), lw (23), sw (2B), beq (04), bne (05).
@@ -37,15 +37,15 @@ REGLAS ESTRICTAS DEL REPOSITORIO (NO ROMPER):
   - `SRC/simulator/src/components/InstructionInspector.tsx` (manteniendo `InstructionInspectorProps`)
   - `SRC/simulator/src/components/MemoryRegistersPanel.tsx` (manteniendo `MemoryRegistersPanelProps`)
 - **Pruebas tuyas:** `VERIF/tests/assembler.test.ts`, `VERIF/tests/algorithm.test.ts`, `VERIF/traces/traza_I.md`, `VERIF/traces/traza_J.md`, `VERIF/results/test_report.md`.
-- **Documentación y Reporte:** `DOCS/site/*` (excepto los SVG en `DOCS/site/assets/` que genera A), `DOCS/propuesta_algoritmo.md`, `DOCS/ficha_integrante_B.md`, y tus entradas en `DOCS/declaracion_ia.md` y `DOCS/acuerdos_y_problemas.md`.
+- **Documentación y Reporte:** `DOCS/site/*` (excepto los SVG en `DOCS/site/assets/` que genera A), `DOCS/propuesta_algoritmo.md`, `DOCS/ficha_fares_khalifa.md`, y tus entradas en `DOCS/declaracion_ia.md` y `DOCS/acuerdos_y_problemas.md`.
 
 ### Archivos PROHIBIDOS (NO editar para evitar conflictos)
 - `SRC/core/types.ts` y `SRC/core/isa.ts` (contratos congelados)
-- `SRC/core/cpu/*` (propiedad de Integrante A)
+- `SRC/core/cpu/*` (propiedad de Alejandro Espinoza)
 - `SRC/simulator/src/App.tsx` (solo se modifica por acuerdo conjunto)
-- `SRC/simulator/src/components/DatapathSVG.tsx` y `ControlSignalsPanel.tsx` (propiedad de Integrante A)
-- `VERIF/tests/isa.test.ts`, `VERIF/tests/integration.test.ts`, `VERIF/traces/traza_R.md` (propiedad de Integrante A)
-- `.github/workflows/*` (propiedad de Integrante A)
+- `SRC/simulator/src/components/DatapathSVG.tsx` y `ControlSignalsPanel.tsx` (propiedad de Alejandro Espinoza)
+- `VERIF/tests/isa.test.ts`, `VERIF/tests/integration.test.ts`, `VERIF/traces/traza_R.md` (propiedad de Alejandro Espinoza)
+- `.github/workflows/*` (propiedad de Alejandro Espinoza)
 
 ---
 
@@ -56,7 +56,7 @@ REGLAS ESTRICTAS DEL REPOSITORIO (NO ROMPER):
 - **Entregable:**
   1. Clonar el repo, ejecutar `cd SRC && npm install && npm test`.
   2. Revisar y completar `DOCS/propuesta_algoritmo.md` con el pseudocódigo detallado de **Selection Sort**, mapa de registros (`$s0, $s1, $t0..$t7`), mapa de memoria (`0x0000 = N`, `0x0004+ = A[0..N-1]`) y las 3 entradas con salidas esperadas.
-  3. Abrir PR hacia `main` y revisar el PR del Integrante A.
+  3. Abrir PR hacia `main` y revisar el PR de Alejandro Espinoza.
 
 ### Día 2 (23) — Ensamblador Base (Tipo R + Etiquetas)
 - **Rama:** `feat/asm-tipo-r`
@@ -106,8 +106,8 @@ REGLAS ESTRICTAS DEL REPOSITORIO (NO ROMPER):
   2. Redactar `VERIF/traces/traza_I.md`, `VERIF/traces/traza_J.md` y `VERIF/results/test_report.md`.
 
 ### Día 8 (29–30) — Evidencia Individual y Ensayo de Defensa
-- **Rama:** `docs/ficha-integrante-b`
+- **Rama:** `docs/ficha-fares-khalifa`
 - **Entregable:**
-  1. Completar `DOCS/ficha_integrante_B.md` (enlaces a tus PRs/commits, traza anotada reproducible propia y decisión/corrección propia).
+  1. Completar `DOCS/ficha_fares_khalifa.md` (enlaces a tus PRs/commits, traza anotada reproducible propia y decisión/corrección propia).
   2. Actualizar tu sección en `DOCS/declaracion_ia.md` y tus conclusiones en `DOCS/site/index.html`.
-  3. Ensayar la defensa individual (sin IA) junto con el Integrante A.
+  3. Ensayar la defensa individual (sin IA) junto con Alejandro Espinoza.

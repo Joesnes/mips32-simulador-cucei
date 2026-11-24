@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A (Dia 2)
+ * PROPIETARIO: Alejandro Espinoza (Dia 2)
  * Memorias de Instrucciones (IMem) y de Datos (DMem) direccionables por byte en formato BIG-ENDIAN.
  *
  * Reglas de la consigna (pag. 3):

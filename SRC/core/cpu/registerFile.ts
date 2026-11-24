@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A
+ * PROPIETARIO: Alejandro Espinoza
  * Banco de Registros (BR): 32 registros de 32 bits.
  * Puertos equivalentes a RTL/referencia/BR.v: AR1, AR2, AW, Dw, we, DR1, DR2.
  * Correccion clave: $0 ($zero) siempre lee 0 y descarta escrituras.

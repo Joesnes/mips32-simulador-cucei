@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A (Dia 2 — Motor multiciclo 5 etapas base Tipo R)
+ * PROPIETARIO: Alejandro Espinoza (Dia 2 — Motor multiciclo 5 etapas base Tipo R)
  *
  * Implementa la ruta de datos MIPS de 32 bits con ejecucion multiciclo de 5 etapas
  * (1 instruccion activa a la vez):

@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A (Dia 5)
+ * PROPIETARIO: Alejandro Espinoza (Dia 5)
  * Diagrama SVG interactivo del Datapath MIPS32 inspirado en MIPS 101 + Patterson & Hennessy.
  */
 import type { CpuSnapshot } from '@core/types';
@@ -19,7 +19,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
         </span>
       </div>
       <div className="placeholder-box">
-        SVG interactivo del Datapath en construcción (Integrante A — Día 5).
+        SVG interactivo del Datapath en construcción (Alejandro Espinoza — Día 5).
       </div>
     </div>
   );

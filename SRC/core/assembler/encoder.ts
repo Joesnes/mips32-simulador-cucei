@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B
+ * PROPIETARIO: Fares Khalifa
  * Codificacion de instrucciones a palabras de 32 bits y utilidades de formato.
  *
  * Campos (de mayor a menor peso), consigna pag. 2:

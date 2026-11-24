@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B
+ * PROPIETARIO: Fares Khalifa
  * Analizador lexico del ensamblador: separa cada linea en etiquetas, mnemonico y operandos.
  *
  * Comentarios: `#` inicia un comentario hasta el fin de linea, EXCEPTO cuando aparece al inicio
