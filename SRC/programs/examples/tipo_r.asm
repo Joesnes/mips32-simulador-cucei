@@ -13,4 +13,4 @@
         slt  $t6, $t1, $t0      # $t6 = 1 (-6 < 12 con signo)
         slt  $t7, $t0, $t1      # $t7 = 0 (12 < -6 es falso)
         add  $zero, $t0, $t0    # escritura a $zero: se descarta, sigue en 0
-fin:    beq  $zero, $zero, fin  # autosalto: punto final observable
+fin:    j    fin                # autosalto: punto final observable
