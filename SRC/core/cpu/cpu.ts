@@ -303,15 +303,19 @@ export class MipsCpu {
     this.cycle += 1;
     this.lastStage = 'ID';
     this.nextStage = 'EX';
-    const immDetail =
-      ctrl.ExtOp !== 'NONE' ? `, immExt=${formatHex32(immExt)} (${ctrl.ExtOp})` : '';
+    const idSummary =
+      fields.format === 'J'
+        ? `ID: j (J) · indice26=0x${fields.jumpIndex.toString(16).toUpperCase().padStart(7, '0')}`
+        : `ID: ${fields.mnemonic} (${fields.format}) · A=${REGISTER_NAMES[fields.rs]}(${formatHex32(A)}), B=${REGISTER_NAMES[fields.rt]}(${formatHex32(B)})${
+            ctrl.ExtOp !== 'NONE' ? `, immExt=${formatHex32(immExt)} (${ctrl.ExtOp})` : ''
+          }`;
     this.lastChange = {
       cycle: this.cycle,
       stage: 'ID',
       pcBefore: this.pc,
       pcAfter: this.pc,
       buffersUpdated: ['ID_EX'],
-      summary: `ID: ${fields.mnemonic} (${fields.format}) · A=${REGISTER_NAMES[fields.rs]}(${formatHex32(A)}), B=${REGISTER_NAMES[fields.rt]}(${formatHex32(B)})${immDetail}`,
+      summary: idSummary,
     };
   }
 
@@ -346,17 +350,21 @@ export class MipsCpu {
     this.cycle += 1;
     this.lastStage = 'EX';
     this.nextStage = 'MEM';
-    const branchDetail =
-      ctrl.Branch === 1 || ctrl.BranchNe === 1
-        ? `, branch=${branchTaken ? 'TOMADA' : 'NO tomada'}`
-        : '';
+    const exSummary =
+      ctrl.Jump === 1
+        ? `EX: j -> jumpTarget=${formatHex32(jumpTarget)}, nextPC=${formatHex32(nextPC)}`
+        : `EX: ALUOut=${formatHex32(ALUOut)}, Zero=${Zero ? 1 : 0}${
+            ctrl.Branch === 1 || ctrl.BranchNe === 1
+              ? `, branch=${branchTaken ? 'TOMADA' : 'NO tomada'}`
+              : ''
+          }, nextPC=${formatHex32(nextPC)}`;
     this.lastChange = {
       cycle: this.cycle,
       stage: 'EX',
       pcBefore: this.pc,
       pcAfter: this.pc,
       buffersUpdated: ['EX_MEM'],
-      summary: `EX: ALUOut=${formatHex32(ALUOut)}, Zero=${Zero ? 1 : 0}${branchDetail}, nextPC=${formatHex32(nextPC)}`,
+      summary: exSummary,
     };
   }
 
@@ -471,7 +479,9 @@ export class MipsCpu {
     this.lastStage = 'WB';
     this.nextStage = 'IF';
 
-    if (ctrl.Jump === 1 && nextPC === pc) {
+    const isSelfJump = ctrl.Jump === 1 && nextPC === pc;
+    const isSelfBranch = this.buffers.EX_MEM.branchTaken && nextPC === pc;
+    if (isSelfJump || isSelfBranch) {
       this.status = 'HALTED_SELFLOOP';
     }
 

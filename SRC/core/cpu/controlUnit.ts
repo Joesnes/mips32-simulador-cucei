@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Alejandro Espinoza (Dia 2 Tipo R + Dia 3 Tipo I; se extendera a J en Dia 4)
+ * PROPIETARIO: Alejandro Espinoza (Dia 2 Tipo R + Dia 3 Tipo I + Dia 4 Tipo J — 12/12 ISA)
  * Decodificador de palabra de 32 bits, Unidad de Control principal y ALUControl.
  */
 
@@ -78,6 +78,10 @@ export function decodeInstruction(word: Word32): DecodedFields {
       case OPCODES.BNE:
         format = 'I';
         mnemonic = 'bne';
+        break;
+      case OPCODES.J:
+        format = 'J';
+        mnemonic = 'j';
         break;
       default:
         format = 'UNKNOWN';
@@ -260,6 +264,22 @@ export function generateControlSignals(fields: DecodedFields): ControlSignals | 
         Jump: 0,
         ALUOp: 0b01,
         ALUctl: ALU_CTL.SUB,
+      };
+
+    case OPCODES.J: // 0x02: salto incondicional dentro de la region de 256 MiB de PC+4
+      return {
+        RegDst: 0,
+        ALUSrc: 0,
+        ExtOp: 'NONE',
+        MemToReg: 0,
+        RegWrite: 0,
+        MemRead: 0,
+        MemWrite: 0,
+        Branch: 0,
+        BranchNe: 0,
+        Jump: 1,
+        ALUOp: 0b00,
+        ALUctl: ALU_CTL.ADD,
       };
 
     default:
