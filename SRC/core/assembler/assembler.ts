@@ -14,12 +14,15 @@
  *   I: addi/addiu, ori                              -> op $rt, $rs, #imm   (el # es opcional)
  *      lw, sw                                       -> op $rt, #desp($rs)
  *      beq, bne                                     -> op $rs, $rt, #etiqueta
+ *   J: j                                            -> j #etiqueta  (o una direccion de byte)
  *
  * Rangos validados (consigna pag. 5):
  *   addi/addiu/lw/sw: inmediato con signo en [-32768, 32767]
  *   ori:              inmediato sin signo en [0, 65535]
  *   beq/bne:          desplazamiento en palabras (destino - (PC + 4)) / 4 en [-32768, 32767],
  *                     etiqueta definida y destino alineado a 4
+ *   j:                destino alineado a 4 y en la misma region de 256 MiB que PC + 4
+ *                     (bits [31:28] iguales); se guardan los bits [27:2] del destino
  */
 
 import { ISA_TABLE, formatHex32, formatHexByte, parseRegister, wordToBytesBigEndian } from '../isa';
@@ -32,7 +35,7 @@ import type {
   Mnemonic,
   Word32,
 } from '../types';
-import { encodeI, encodeR, formatBinaryFields } from './encoder';
+import { encodeI, encodeJ, encodeR, formatBinaryFields } from './encoder';
 import { tokenizeSource, type SourceLine } from './lexer';
 
 type DiagnosticCode = AssemblerDiagnostic['code'];
@@ -139,6 +142,31 @@ function branchOffset(token: string, mnemonic: string, ctx: EncodeContext): numb
   return offset;
 }
 
+/** Resuelve el destino de j (etiqueta o direccion de byte) y valida alineacion y region. */
+function jumpTarget(token: string, ctx: EncodeContext): Word32 {
+  const name = token.startsWith('#') ? token.slice(1) : token;
+  let target: Word32;
+  if (LABEL_NAME_RE.test(name)) {
+    if (!Object.prototype.hasOwnProperty.call(ctx.labels, name)) {
+      throw new LineError('UNDEFINED_LABEL', `La etiqueta "${name}" no esta definida.`);
+    }
+    target = ctx.labels[name];
+  } else {
+    target = readNumber(token, 'una etiqueta o direccion') >>> 0;
+  }
+  if ((target & 0x3) !== 0) {
+    throw new LineError('UNALIGNED_TARGET', `El destino ${formatHex32(target)} de "j" no esta alineado a 4.`);
+  }
+  const region = ((ctx.address + 4) & 0xf0000000) >>> 0;
+  if (((target & 0xf0000000) >>> 0) !== region) {
+    throw new LineError(
+      'JUMP_OUT_OF_REGION',
+      `El destino ${formatHex32(target)} esta fuera de la region de 256 MiB de PC + 4 (${formatHex32(region)}..${formatHex32(region + 0x0fffffff)}).`,
+    );
+  }
+  return target;
+}
+
 function encodeLine(line: SourceLine, ctx: EncodeContext): EncodedLine {
   const mnemonic = line.mnemonic as string;
   const spec = isKnownMnemonic(mnemonic) ? ISA_TABLE[mnemonic] : null;
@@ -177,6 +205,11 @@ function encodeLine(line: SourceLine, ctx: EncodeContext): EncodedLine {
     const rt = readRegister(line.operands[1]);
     const offset = branchOffset(line.operands[2], mnemonic, ctx);
     return { word: encodeI(spec.opcode, rs, rt, offset), format: 'I' };
+  }
+
+  if (spec && mnemonic === 'j') {
+    expectOperandCount(line, 1, 'j #etiqueta');
+    return { word: encodeJ(spec.opcode, jumpTarget(line.operands[0], ctx)), format: 'J' };
   }
 
   if (isKnownMnemonic(mnemonic)) {
