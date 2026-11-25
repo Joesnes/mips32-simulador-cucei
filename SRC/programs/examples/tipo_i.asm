@@ -16,4 +16,4 @@ igual:  bne   $t0, $t0, fin       # rama NO tomada ($t0 == $t0)
         addi  $t5, $zero, 3       # contador = 3
 ciclo:  addi  $t5, $t5, -1        # rama hacia atras: se repite 3 veces
         bne   $t5, $zero, ciclo
-fin:    beq   $zero, $zero, fin   # autosalto: punto final observable
+fin:    j     fin                 # autosalto: punto final observable

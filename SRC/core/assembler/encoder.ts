@@ -32,6 +32,11 @@ export function encodeI(opcode: number, rs: number, rt: number, imm: number): Wo
   ) >>> 0;
 }
 
+/** Codifica una instruccion tipo J guardando los bits [27:2] del destino como indice de 26 bits. */
+export function encodeJ(opcode: number, target: Word32): Word32 {
+  return (((opcode & 0x3f) << 26) | ((target >>> 2) & 0x03ffffff)) >>> 0;
+}
+
 /** Binario de 32 bits separado por campos segun el formato (ej. R: `000000 01001 01010 01000 00000 100001`). */
 export function formatBinaryFields(word: Word32, format: InstructionFormat): string {
   const bits = formatBin32(word);

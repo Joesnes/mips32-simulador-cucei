@@ -1,0 +1,175 @@
+[
+  {
+    "id": "estandar",
+    "name": "Entrada 1 - Caso estándar",
+    "description": "N = 5 con enteros positivos desordenados.",
+    "isEdgeCase": false,
+    "initialMemory": [
+      {
+        "address": 0,
+        "value": 5,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": 25,
+        "label": "A[0]"
+      },
+      {
+        "address": 8,
+        "value": 4,
+        "label": "A[1]"
+      },
+      {
+        "address": 12,
+        "value": 17,
+        "label": "A[2]"
+      },
+      {
+        "address": 16,
+        "value": 1,
+        "label": "A[3]"
+      },
+      {
+        "address": 20,
+        "value": 9,
+        "label": "A[4]"
+      }
+    ],
+    "expectedMemory": [
+      {
+        "address": 0,
+        "value": 5,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": 1,
+        "label": "A[0]"
+      },
+      {
+        "address": 8,
+        "value": 4,
+        "label": "A[1]"
+      },
+      {
+        "address": 12,
+        "value": 9,
+        "label": "A[2]"
+      },
+      {
+        "address": 16,
+        "value": 17,
+        "label": "A[3]"
+      },
+      {
+        "address": 20,
+        "value": 25,
+        "label": "A[4]"
+      }
+    ],
+    "maxInstructions": 500
+  },
+  {
+    "id": "negativos-duplicados",
+    "name": "Entrada 2 - Negativos y duplicados",
+    "description": "N = 5 con negativos y un valor repetido; valida que slt compare con signo.",
+    "isEdgeCase": false,
+    "initialMemory": [
+      {
+        "address": 0,
+        "value": 5,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": -3,
+        "label": "A[0]"
+      },
+      {
+        "address": 8,
+        "value": 7,
+        "label": "A[1]"
+      },
+      {
+        "address": 12,
+        "value": -3,
+        "label": "A[2]"
+      },
+      {
+        "address": 16,
+        "value": 0,
+        "label": "A[3]"
+      },
+      {
+        "address": 20,
+        "value": -10,
+        "label": "A[4]"
+      }
+    ],
+    "expectedMemory": [
+      {
+        "address": 0,
+        "value": 5,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": -10,
+        "label": "A[0]"
+      },
+      {
+        "address": 8,
+        "value": -3,
+        "label": "A[1]"
+      },
+      {
+        "address": 12,
+        "value": -3,
+        "label": "A[2]"
+      },
+      {
+        "address": 16,
+        "value": 0,
+        "label": "A[3]"
+      },
+      {
+        "address": 20,
+        "value": 7,
+        "label": "A[4]"
+      }
+    ],
+    "maxInstructions": 500
+  },
+  {
+    "id": "borde-un-elemento",
+    "name": "Entrada 3 - Caso borde (N = 1)",
+    "description": "Un solo elemento: el programa llega a fin sin leer ni escribir el arreglo.",
+    "isEdgeCase": true,
+    "initialMemory": [
+      {
+        "address": 0,
+        "value": 1,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": 42,
+        "label": "A[0]"
+      }
+    ],
+    "expectedMemory": [
+      {
+        "address": 0,
+        "value": 1,
+        "label": "N"
+      },
+      {
+        "address": 4,
+        "value": 42,
+        "label": "A[0]"
+      }
+    ],
+    "maxInstructions": 50
+  }
+]
