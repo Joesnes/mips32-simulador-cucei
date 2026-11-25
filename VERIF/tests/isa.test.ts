@@ -24,6 +24,11 @@ function encodeI(opcode: number, rs: number, rt: number, imm: number): number {
   ) >>> 0;
 }
 
+/** Helper local para codificar palabras tipo J: opcode(6)|indice(26). */
+function encodeJ(targetByteAddress: number): number {
+  return (((OPCODES.J & 0x3f) << 26) | ((targetByteAddress >>> 2) & 0x03ffffff)) >>> 0;
+}
+
 function wordsToBytes(words: number[]): number[] {
   return words.flatMap((w) => wordToBytesBigEndian(w));
 }
@@ -325,5 +330,62 @@ describe('ISA Tipo I y accesos a memoria (Dia 3 - Alejandro Espinoza)', () => {
     expect(snap.registers[10]).toBe(0); // 0x1C fue omitida por beq tomada (sin delay slot)
     expect(snap.registers[11]).toBe(7); // 0x20 si se ejecuto
     expect(snap.instructionsExecuted).toBe(14); // 2 init + 1 beq(NT) + 3*3 loop + 1 beq(T) + 1 final
+  });
+});
+
+describe('ISA Tipo J (Dia 4 - Alejandro Espinoza — 12/12 instrucciones)', () => {
+  it('ejecuta j omitiendo una instruccion con efecto visible (sin ranura de retardo) y detecta autosalto', () => {
+    const cpu = new MipsCpu();
+    // 0x00: j 0x08                  -> salta a 0x08 omitiendo 0x04
+    // 0x04: addi $t0, $zero, 99     -> NO debe ejecutarse
+    // 0x08: addi $t1, $zero, 42     -> SI se ejecuta
+    // 0x0C: j 0x0C                  -> autosalto observable (HALTED_SELFLOOP)
+    const prog = wordsToBytes([
+      encodeJ(0x08),
+      encodeI(OPCODES.ADDI, 0, 8, 99),
+      encodeI(OPCODES.ADDI, 0, 9, 42),
+      encodeJ(0x0c),
+    ]);
+    cpu.loadProgram(prog);
+
+    // Verificar etapas de la instruccion j en 0x00
+    cpu.stepStage(); // IF
+    const afterID = cpu.stepStage(); // ID
+    expect(afterID.buffers.ID_EX.fields.format).toBe('J');
+    expect(afterID.buffers.ID_EX.fields.mnemonic).toBe('j');
+    expect(afterID.buffers.ID_EX.fields.jumpIndex).toBe(2);
+    expect(afterID.buffers.ID_EX.ctrl.Jump).toBe(1);
+    expect(afterID.buffers.ID_EX.ctrl.RegWrite).toBe(0);
+
+    const afterEX = cpu.stepStage(); // EX
+    expect(afterEX.buffers.EX_MEM.jumpTarget).toBe(0x08);
+    expect(afterEX.buffers.EX_MEM.nextPC).toBe(0x08);
+
+    const afterJump = cpu.stepInstruction(); // MEM + WB
+    expect(afterJump.pc).toBe(0x08);
+    expect(afterJump.registers[8]).toBe(0);
+
+    const afterAddi = cpu.stepInstruction(); // 0x08: addi $t1, $zero, 42
+    expect(afterAddi.registers[8]).toBe(0);
+    expect(afterAddi.registers[9]).toBe(42);
+    expect(afterAddi.pc).toBe(0x0c);
+
+    const afterSelfLoop = cpu.stepInstruction(); // 0x0C: j 0x0C
+    expect(afterSelfLoop.pc).toBe(0x0c);
+    expect(afterSelfLoop.status).toBe('HALTED_SELFLOOP');
+  });
+
+  it('detiene de forma visible cuando j salta fuera del rango del programa', () => {
+    const cpu = new MipsCpu();
+    const prog = wordsToBytes([encodeJ(0x00000400)]);
+    cpu.loadProgram(prog);
+
+    const afterJump = cpu.stepInstruction();
+    expect(afterJump.pc).toBe(0x00000400);
+
+    const errSnap = cpu.stepStage();
+    expect(errSnap.status).toBe('ERROR');
+    expect(errSnap.error?.code).toBe('PC_OUT_OF_RANGE');
+    expect(errSnap.error?.stage).toBe('IF');
   });
 });
