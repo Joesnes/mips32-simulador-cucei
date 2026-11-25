@@ -9,7 +9,17 @@
  *   Pasada 2: valida mnemonico y operandos, codifica la palabra de 32 bits y arma
  *             la imagen big-endian (1 byte por direccion), el .hex y el listado.
  *
- * Soporte actual: instrucciones tipo R (add, sub, and, or, slt).
+ * Soporte actual:
+ *   R: add, sub, and, or, slt                       -> op $rd, $rs, $rt
+ *   I: addi/addiu, ori                              -> op $rt, $rs, #imm   (el # es opcional)
+ *      lw, sw                                       -> op $rt, #desp($rs)
+ *      beq, bne                                     -> op $rs, $rt, #etiqueta
+ *
+ * Rangos validados (consigna pag. 5):
+ *   addi/addiu/lw/sw: inmediato con signo en [-32768, 32767]
+ *   ori:              inmediato sin signo en [0, 65535]
+ *   beq/bne:          desplazamiento en palabras (destino - (PC + 4)) / 4 en [-32768, 32767],
+ *                     etiqueta definida y destino alineado a 4
  */
 
 import { ISA_TABLE, formatHex32, formatHexByte, parseRegister, wordToBytesBigEndian } from '../isa';
@@ -22,7 +32,7 @@ import type {
   Mnemonic,
   Word32,
 } from '../types';
-import { encodeR, formatBinaryFields } from './encoder';
+import { encodeI, encodeR, formatBinaryFields } from './encoder';
 import { tokenizeSource, type SourceLine } from './lexer';
 
 type DiagnosticCode = AssemblerDiagnostic['code'];
@@ -40,6 +50,21 @@ interface EncodedLine {
 }
 
 const R_MNEMONICS = new Set<string>(['add', 'sub', 'and', 'or', 'slt']);
+const I_ARITH_MNEMONICS = new Set<string>(['addi', 'addiu', 'ori']);
+const I_MEMORY_MNEMONICS = new Set<string>(['lw', 'sw']);
+const I_BRANCH_MNEMONICS = new Set<string>(['beq', 'bne']);
+
+const SIGNED_16 = { min: -32768, max: 32767 };
+const UNSIGNED_16 = { min: 0, max: 65535 };
+const LABEL_NAME_RE = /^[A-Za-z_.][A-Za-z0-9_.]*$/;
+const NUMBER_RE = /^[+-]?(0x[0-9a-f]+|0b[01]+|\d+)$/i;
+const MEMORY_OPERAND_RE = /^([^()]*)\(\s*([^()\s]+)\s*\)$/;
+
+/** Contexto que la pasada 2 necesita para resolver etiquetas. */
+interface EncodeContext {
+  address: Word32;
+  labels: Record<string, Word32>;
+}
 
 function isKnownMnemonic(mnemonic: string): mnemonic is Mnemonic {
   return Object.prototype.hasOwnProperty.call(ISA_TABLE, mnemonic);
@@ -65,14 +90,93 @@ function readRegister(token: string): number {
   return index;
 }
 
-function encodeLine(line: SourceLine): EncodedLine {
-  const mnemonic = line.mnemonic as string;
+/** Lee un numero decimal, hexadecimal (0x) o binario (0b), con signo y `#` opcionales. */
+function readNumber(token: string, what: string): number {
+  const text = token.startsWith('#') ? token.slice(1) : token;
+  if (!NUMBER_RE.test(text)) {
+    throw new LineError('INVALID_SYNTAX', `Se esperaba ${what} numerico y se encontro "${token}".`);
+  }
+  const negative = text.startsWith('-');
+  const digits = text.replace(/^[+-]/, '').toLowerCase();
+  const magnitude = digits.startsWith('0x')
+    ? parseInt(digits.slice(2), 16)
+    : digits.startsWith('0b')
+      ? parseInt(digits.slice(2), 2)
+      : parseInt(digits, 10);
+  return negative ? -magnitude : magnitude;
+}
 
-  if (R_MNEMONICS.has(mnemonic)) {
-    const spec = ISA_TABLE[mnemonic as Mnemonic];
+function checkRange(value: number, range: { min: number; max: number }, mnemonic: string): number {
+  if (value < range.min || value > range.max) {
+    throw new LineError(
+      'IMMEDIATE_OUT_OF_RANGE',
+      `El inmediato ${value} de "${mnemonic}" esta fuera de rango [${range.min}, ${range.max}].`,
+    );
+  }
+  return value;
+}
+
+/** Calcula el desplazamiento en palabras de beq/bne: (destino - (PC + 4)) / 4. */
+function branchOffset(token: string, mnemonic: string, ctx: EncodeContext): number {
+  const name = token.startsWith('#') ? token.slice(1) : token;
+  if (!LABEL_NAME_RE.test(name)) {
+    throw new LineError('INVALID_SYNTAX', `"${mnemonic}" espera una etiqueta como destino y se encontro "${token}".`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(ctx.labels, name)) {
+    throw new LineError('UNDEFINED_LABEL', `La etiqueta "${name}" no esta definida.`);
+  }
+  const target = ctx.labels[name];
+  if ((target & 0x3) !== 0) {
+    throw new LineError('UNALIGNED_TARGET', `El destino ${formatHex32(target)} de "${name}" no esta alineado a 4.`);
+  }
+  const offset = (target - (ctx.address + 4)) / 4;
+  if (offset < SIGNED_16.min || offset > SIGNED_16.max) {
+    throw new LineError(
+      'BRANCH_OUT_OF_RANGE',
+      `El salto a "${name}" requiere ${offset} palabras y no cabe en 16 bits con signo [-32768, 32767].`,
+    );
+  }
+  return offset;
+}
+
+function encodeLine(line: SourceLine, ctx: EncodeContext): EncodedLine {
+  const mnemonic = line.mnemonic as string;
+  const spec = isKnownMnemonic(mnemonic) ? ISA_TABLE[mnemonic] : null;
+
+  if (spec && R_MNEMONICS.has(mnemonic)) {
     expectOperandCount(line, 3, `${mnemonic} $rd, $rs, $rt`);
     const [rd, rs, rt] = line.operands.map(readRegister);
     return { word: encodeR(spec.funct as number, rd, rs, rt), format: 'R' };
+  }
+
+  if (spec && I_ARITH_MNEMONICS.has(mnemonic)) {
+    expectOperandCount(line, 3, `${mnemonic} $rt, $rs, #imm`);
+    const rt = readRegister(line.operands[0]);
+    const rs = readRegister(line.operands[1]);
+    const range = mnemonic === 'ori' ? UNSIGNED_16 : SIGNED_16;
+    const imm = checkRange(readNumber(line.operands[2], 'un inmediato'), range, mnemonic);
+    return { word: encodeI(spec.opcode, rs, rt, imm), format: 'I' };
+  }
+
+  if (spec && I_MEMORY_MNEMONICS.has(mnemonic)) {
+    expectOperandCount(line, 2, `${mnemonic} $rt, #desp($rs)`);
+    const rt = readRegister(line.operands[0]);
+    const match = MEMORY_OPERAND_RE.exec(line.operands[1]);
+    if (!match) {
+      throw new LineError('INVALID_SYNTAX', `"${mnemonic}" espera un operando de memoria como 4($s0) y se encontro "${line.operands[1]}".`);
+    }
+    const offsetText = match[1].trim();
+    const offset = offsetText === '' || offsetText === '#' ? 0 : readNumber(offsetText, 'un desplazamiento');
+    const rs = readRegister(match[2]);
+    return { word: encodeI(spec.opcode, rs, rt, checkRange(offset, SIGNED_16, mnemonic)), format: 'I' };
+  }
+
+  if (spec && I_BRANCH_MNEMONICS.has(mnemonic)) {
+    expectOperandCount(line, 3, `${mnemonic} $rs, $rt, #etiqueta`);
+    const rs = readRegister(line.operands[0]);
+    const rt = readRegister(line.operands[1]);
+    const offset = branchOffset(line.operands[2], mnemonic, ctx);
+    return { word: encodeI(spec.opcode, rs, rt, offset), format: 'I' };
   }
 
   if (isKnownMnemonic(mnemonic)) {
@@ -133,7 +237,7 @@ export function assemble(source: string): AssembleResult {
       continue;
     }
     try {
-      const { word, format } = encodeLine(line);
+      const { word, format } = encodeLine(line, { address, labels });
       instructions.push({
         address,
         line: line.line,
