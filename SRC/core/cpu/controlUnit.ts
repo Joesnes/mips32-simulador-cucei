@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Alejandro Espinoza (Dia 2 — Base Tipo R; se extendera a I en Dia 3 y J en Dia 4)
+ * PROPIETARIO: Alejandro Espinoza (Dia 2 Tipo R + Dia 3 Tipo I; se extendera a J en Dia 4)
  * Decodificador de palabra de 32 bits, Unidad de Control principal y ALUControl.
  */
 
@@ -48,6 +48,36 @@ export function decodeInstruction(word: Word32): DecodedFields {
       case FUNCTS.SLT:
         format = 'R';
         mnemonic = 'slt';
+        break;
+      default:
+        format = 'UNKNOWN';
+        mnemonic = 'unknown';
+    }
+  } else {
+    switch (opcode) {
+      case OPCODES.ADDI:
+        format = 'I';
+        mnemonic = 'addi';
+        break;
+      case OPCODES.ORI:
+        format = 'I';
+        mnemonic = 'ori';
+        break;
+      case OPCODES.LW:
+        format = 'I';
+        mnemonic = 'lw';
+        break;
+      case OPCODES.SW:
+        format = 'I';
+        mnemonic = 'sw';
+        break;
+      case OPCODES.BEQ:
+        format = 'I';
+        mnemonic = 'beq';
+        break;
+      case OPCODES.BNE:
+        format = 'I';
+        mnemonic = 'bne';
         break;
       default:
         format = 'UNKNOWN';
@@ -135,5 +165,104 @@ export function generateControlSignals(fields: DecodedFields): ControlSignals | 
     };
   }
 
-  return null;
+  switch (fields.opcode) {
+    case OPCODES.ADDI: // 0x09 (addi / addiu): suma modulo 2^32 con inmediato extendido con signo
+      return {
+        RegDst: 0,
+        ALUSrc: 1,
+        ExtOp: 'SIGN',
+        MemToReg: 0,
+        RegWrite: 1,
+        MemRead: 0,
+        MemWrite: 0,
+        Branch: 0,
+        BranchNe: 0,
+        Jump: 0,
+        ALUOp: 0b00,
+        ALUctl: ALU_CTL.ADD,
+      };
+
+    case OPCODES.ORI: // 0x0D: OR con inmediato extendido con ceros
+      return {
+        RegDst: 0,
+        ALUSrc: 1,
+        ExtOp: 'ZERO',
+        MemToReg: 0,
+        RegWrite: 1,
+        MemRead: 0,
+        MemWrite: 0,
+        Branch: 0,
+        BranchNe: 0,
+        Jump: 0,
+        ALUOp: 0b11,
+        ALUctl: ALU_CTL.OR,
+      };
+
+    case OPCODES.LW: // 0x23: carga palabra big-endian en rt desde R[rs] + signExt(imm16)
+      return {
+        RegDst: 0,
+        ALUSrc: 1,
+        ExtOp: 'SIGN',
+        MemToReg: 1,
+        RegWrite: 1,
+        MemRead: 1,
+        MemWrite: 0,
+        Branch: 0,
+        BranchNe: 0,
+        Jump: 0,
+        ALUOp: 0b00,
+        ALUctl: ALU_CTL.ADD,
+      };
+
+    case OPCODES.SW: // 0x2B: guarda palabra de rt en R[rs] + signExt(imm16)
+      return {
+        RegDst: 0,
+        ALUSrc: 1,
+        ExtOp: 'SIGN',
+        MemToReg: 0,
+        RegWrite: 0,
+        MemRead: 0,
+        MemWrite: 1,
+        Branch: 0,
+        BranchNe: 0,
+        Jump: 0,
+        ALUOp: 0b00,
+        ALUctl: ALU_CTL.ADD,
+      };
+
+    case OPCODES.BEQ: // 0x04: salta si rs == rt (ALU resta, Zero == 1)
+      return {
+        RegDst: 0,
+        ALUSrc: 0,
+        ExtOp: 'SIGN',
+        MemToReg: 0,
+        RegWrite: 0,
+        MemRead: 0,
+        MemWrite: 0,
+        Branch: 1,
+        BranchNe: 0,
+        Jump: 0,
+        ALUOp: 0b01,
+        ALUctl: ALU_CTL.SUB,
+      };
+
+    case OPCODES.BNE: // 0x05: salta si rs != rt (ALU resta, Zero == 0)
+      return {
+        RegDst: 0,
+        ALUSrc: 0,
+        ExtOp: 'SIGN',
+        MemToReg: 0,
+        RegWrite: 0,
+        MemRead: 0,
+        MemWrite: 0,
+        Branch: 0,
+        BranchNe: 1,
+        Jump: 0,
+        ALUOp: 0b01,
+        ALUctl: ALU_CTL.SUB,
+      };
+
+    default:
+      return null;
+  }
 }
