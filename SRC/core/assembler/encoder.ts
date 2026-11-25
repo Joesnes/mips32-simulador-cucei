@@ -22,6 +22,16 @@ export function encodeR(funct: number, rd: number, rs: number, rt: number, shamt
   ) >>> 0;
 }
 
+/** Codifica una instruccion tipo I; el inmediato (con o sin signo) se guarda en sus 16 bits bajos. */
+export function encodeI(opcode: number, rs: number, rt: number, imm: number): Word32 {
+  return (
+    ((opcode & 0x3f) << 26) |
+    ((rs & 0x1f) << 21) |
+    ((rt & 0x1f) << 16) |
+    (imm & 0xffff)
+  ) >>> 0;
+}
+
 /** Binario de 32 bits separado por campos segun el formato (ej. R: `000000 01001 01010 01000 00000 100001`). */
 export function formatBinaryFields(word: Word32, format: InstructionFormat): string {
   const bits = formatBin32(word);
