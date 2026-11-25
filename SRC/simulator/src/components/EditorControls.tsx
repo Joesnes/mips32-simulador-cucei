@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B (Dia 5)
+ * PROPIETARIO: Fares Khalifa (Dia 5)
  * Editor de codigo ensamblador MIPS, selector de ejemplos/datasets y controles de ejecucion.
  * NO cambiar la interfaz `EditorControlsProps` sin acuerdo en PR.
  */

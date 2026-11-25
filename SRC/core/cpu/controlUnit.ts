@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A (Dia 2 — Base Tipo R; se extendera a I en Dia 3 y J en Dia 4)
+ * PROPIETARIO: Alejandro Espinoza (Dia 2 — Base Tipo R; se extendera a I en Dia 3 y J en Dia 4)
  * Decodificador de palabra de 32 bits, Unidad de Control principal y ALUControl.
  */
 

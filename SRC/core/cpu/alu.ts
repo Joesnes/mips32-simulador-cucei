@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante A
+ * PROPIETARIO: Alejandro Espinoza
  * Modulo MIPSALU (alineado a RTL/referencia/ALU.v con correccion de SLT con signo).
  */
 

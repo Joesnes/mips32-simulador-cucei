@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B (Dia 5)
+ * PROPIETARIO: Fares Khalifa (Dia 5)
  * Inspector de instruccion actual (32 bits por campo: opcode, rs, rt, rd, shamt, funct, imm, index)
  * y listado ensamblado (direccion, hex, binario, fuente).
  */
@@ -20,7 +20,7 @@ export function InstructionInspector({ snapshot, assembleResult }: InstructionIn
         IR: <code>{formatHex32(ir)}</code> · Instrucciones ensambladas:{' '}
         <strong>{assembleResult?.instructions.length ?? 0}</strong>
       </p>
-      <p className="muted">Desglose de campos y listado pendiente (Integrante B — Día 5).</p>
+      <p className="muted">Desglose de campos y listado pendiente (Fares Khalifa — Día 5).</p>
     </div>
   );
 }

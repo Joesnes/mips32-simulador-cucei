@@ -37,6 +37,6 @@ npm run build
 ## Guías del Equipo
 
 - [Guía paso a paso de Git y GitHub](DOCS/GUIA_EQUIPO_Y_GITHUB.md)
-- [Guía de tareas y contratos para Integrante B](DOCS/TAREAS_INTEGRANTE_B.md)
+- [Guía de tareas y contratos para Fares Khalifa](DOCS/TAREAS_FARES_KHALIFA.md)
 - [Propuesta del algoritmo Selection Sort](DOCS/propuesta_algoritmo.md)
 - [Cronograma de 8 días](DOCS/cronograma.md)

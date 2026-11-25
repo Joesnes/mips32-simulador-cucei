@@ -18,7 +18,7 @@ function wordsToBytes(words: number[]): number[] {
   return words.flatMap((w) => wordToBytesBigEndian(w));
 }
 
-describe('ISA Tipo R y motor multiciclo de 5 etapas (Dia 2 - Integrante A)', () => {
+describe('ISA Tipo R y motor multiciclo de 5 etapas (Dia 2 - Alejandro Espinoza)', () => {
   it('recorre IF -> ID -> EX -> MEM -> WB y actualiza todos los buffers para add $t2, $t0, $t1', () => {
     const cpu = new MipsCpu();
     // add $t2 ($10), $t0 ($8), $t1 ($9) -> funct 0x21

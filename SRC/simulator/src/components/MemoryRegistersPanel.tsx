@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B (Dia 6)
+ * PROPIETARIO: Fares Khalifa (Dia 6)
  * Visualizador del Banco de Registros ($0-$31), Memoria de Instrucciones (bytes big-endian)
  * y Memoria de Datos (palabras/bytes big-endian) con resaltado de cambios.
  */
@@ -22,7 +22,7 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
           </div>
         ))}
       </div>
-      <p className="muted">Vista completa de 32 registros, IMem y DMem pendiente (Integrante B — Día 6).</p>
+      <p className="muted">Vista completa de 32 registros, IMem y DMem pendiente (Fares Khalifa — Día 6).</p>
     </div>
   );
 }

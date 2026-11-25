@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B
+ * PROPIETARIO: Fares Khalifa
  * Punto de entrada publico del ensamblador MIPS de 32 bits.
  * NO cambiar la firma exportada `assemble(source: string): AssembleResult`.
  *

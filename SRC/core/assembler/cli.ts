@@ -1,5 +1,5 @@
 /**
- * PROPIETARIO: Integrante B (Dia 3)
+ * PROPIETARIO: Fares Khalifa (Dia 3)
  * CLI para regenerar imagenes cargables (.hex de 1 byte/dir) y listados (.lst) desde un .asm:
  *   Uso: npm run assemble -- programs/selection_sort.asm
  */
