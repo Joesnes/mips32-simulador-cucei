@@ -141,3 +141,102 @@ describe('Ensamblador - diagnosticos por linea', () => {
     expect(result.listing).toBe('');
   });
 });
+
+describe('Ensamblador - codificacion tipo I', () => {
+  it('ejemplo de la consigna: addiu $t0, $zero, 5 -> 0x24080005 y bytes 24 08 00 05', () => {
+    const result = assembleOk('addiu $t0, $zero, 5');
+    expect(result.instructions[0].word).toBe(0x24080005);
+    expect(result.instructions[0].bytes).toEqual([0x24, 0x08, 0x00, 0x05]);
+    expect(result.hexImage).toBe('24\n08\n00\n05\n');
+    expect(result.instructions[0].binary).toBe('001001 00000 01000 0000000000000101');
+  });
+
+  it.each([
+    ['addi $t1, $t0, -1', 0x2509ffff],
+    ['addi $s0, $s0, 32767', 0x26107fff],
+    ['addi $s0, $s0, -32768', 0x26108000],
+    ['addi $t1, $t0, #-1', 0x2509ffff],
+    ['ori $t2, $zero, 0xFFFF', 0x340affff],
+    ['ori $t2, $zero, 65535', 0x340affff],
+    ['lw $s1, 0($zero)', 0x8c110000],
+    ['lw $s1, ($zero)', 0x8c110000],
+    ['sw $t4, -4($s0)', 0xae0cfffc],
+    ['lw $t0, #8($s0)', 0x8e080008],
+  ])('%s -> palabra esperada', (source, expected) => {
+    const [ins] = assembleOk(source).instructions;
+    expect(ins.word).toBe(expected);
+    expect(ins.format).toBe('I');
+  });
+
+  it('addi y addiu generan la misma palabra (opcode 0x09)', () => {
+    expect(assembleOk('addi $t0, $zero, 5').instructions[0].word).toBe(0x24080005);
+  });
+
+  it('calcula el desplazamiento de beq/bne en palabras, hacia atras y hacia adelante', () => {
+    const result = assembleOk([
+      'loop: addi $t0, $t0, -1',
+      '      bne  $t0, $zero, loop   # atras: (0 - 8) / 4 = -2',
+      '      beq  $zero, $zero, #fin # adelante: (16 - 12) / 4 = 1',
+      '      add  $t1, $t1, $t1',
+      'fin:  add  $t2, $t2, $t2',
+    ].join('\n'));
+    expect(result.instructions[1].word).toBe(0x1500fffe);
+    expect(result.instructions[2].word).toBe(0x10000001);
+  });
+
+  it('un beq a si mismo tiene desplazamiento -1', () => {
+    expect(assembleOk('self: beq $t0, $t1, self').instructions[0].word).toBe(0x1109ffff);
+  });
+});
+
+describe('Ensamblador - rangos y errores tipo I', () => {
+  it.each([
+    ['addi $t0, $t0, 32768'],
+    ['addi $t0, $t0, -32769'],
+    ['addiu $t0, $t0, 0x10000'],
+    ['ori $t0, $t0, -1'],
+    ['ori $t0, $t0, 65536'],
+    ['lw $t0, 32768($s0)'],
+    ['sw $t0, -32769($s0)'],
+  ])('rechaza inmediato fuera de rango en "%s"', (source) => {
+    const result = assemble(source);
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics[0]).toMatchObject({ line: 1, code: 'IMMEDIATE_OUT_OF_RANGE' });
+  });
+
+  it.each([
+    ['addi $t0, $t0, abc'],
+    ['addi $t0, $t0'],
+    ['lw $t0, $s0'],
+    ['lw $t0, 4'],
+    ['sw $t0, 4($s0), 8'],
+    ['beq $t0, $t1, 8'],
+  ])('rechaza sintaxis incorrecta en "%s"', (source) => {
+    const result = assemble(source);
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics[0]).toMatchObject({ line: 1, code: 'INVALID_SYNTAX' });
+  });
+
+  it('rechaza registro base invalido en lw/sw', () => {
+    expect(assemble('lw $t0, 4($t99)').diagnostics[0]).toMatchObject({ code: 'INVALID_REGISTER' });
+  });
+
+  it('reporta etiqueta indefinida en beq/bne con su linea', () => {
+    const result = assemble('add $t0, $t1, $t2\nbne $t0, $zero, nada');
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ line: 2, code: 'UNDEFINED_LABEL' });
+  });
+
+  it('rechaza un salto condicional que no cabe en 16 bits con signo', () => {
+    const relleno = Array.from({ length: 32768 }, () => 'add $t0, $t0, $t0');
+    const ok = assemble(['beq $zero, $zero, lejos', ...relleno.slice(1), 'lejos: add $t1, $t1, $t1'].join('\n'));
+    expect(ok.ok).toBe(true);
+    expect(ok.instructions[0].word & 0xffff).toBe(0x7fff);
+    const fuera = assemble(['beq $zero, $zero, lejos', ...relleno, 'lejos: add $t1, $t1, $t1'].join('\n'));
+    expect(fuera.diagnostics[0]).toMatchObject({ line: 1, code: 'BRANCH_OUT_OF_RANGE' });
+  });
+
+  it('todavia no acepta j (se agrega con el formato J)', () => {
+    expect(assemble('fin: j fin').diagnostics[0]).toMatchObject({ code: 'INVALID_MNEMONIC' });
+  });
+});
