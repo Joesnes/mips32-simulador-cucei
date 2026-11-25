@@ -303,13 +303,15 @@ export class MipsCpu {
     this.cycle += 1;
     this.lastStage = 'ID';
     this.nextStage = 'EX';
+    const immDetail =
+      ctrl.ExtOp !== 'NONE' ? `, immExt=${formatHex32(immExt)} (${ctrl.ExtOp})` : '';
     this.lastChange = {
       cycle: this.cycle,
       stage: 'ID',
       pcBefore: this.pc,
       pcAfter: this.pc,
       buffersUpdated: ['ID_EX'],
-      summary: `ID: ${fields.mnemonic} (${fields.format}) · A=${REGISTER_NAMES[fields.rs]}(${formatHex32(A)}), B=${REGISTER_NAMES[fields.rt]}(${formatHex32(B)})`,
+      summary: `ID: ${fields.mnemonic} (${fields.format}) · A=${REGISTER_NAMES[fields.rs]}(${formatHex32(A)}), B=${REGISTER_NAMES[fields.rt]}(${formatHex32(B)})${immDetail}`,
     };
   }
 
@@ -320,7 +322,7 @@ export class MipsCpu {
     const { ALUOut, Zero } = executeAlu(ctrl.ALUctl, aluOperandA, aluOperandB);
 
     const writeReg = ctrl.RegDst === 1 ? fields.rd : fields.rt;
-    const branchTarget = toUint32(pcPlus4 + (signExtend16(fields.imm16) << 2));
+    const branchTarget = toUint32(pcPlus4 + (fields.immSigned << 2));
     const jumpTarget = toUint32((pcPlus4 & 0xf0000000) | ((fields.jumpIndex & 0x03ffffff) << 2));
     const branchTaken = (ctrl.Branch === 1 && Zero) || (ctrl.BranchNe === 1 && !Zero);
     const nextPC = ctrl.Jump === 1 ? jumpTarget : branchTaken ? branchTarget : pcPlus4;
@@ -344,13 +346,17 @@ export class MipsCpu {
     this.cycle += 1;
     this.lastStage = 'EX';
     this.nextStage = 'MEM';
+    const branchDetail =
+      ctrl.Branch === 1 || ctrl.BranchNe === 1
+        ? `, branch=${branchTaken ? 'TOMADA' : 'NO tomada'}`
+        : '';
     this.lastChange = {
       cycle: this.cycle,
       stage: 'EX',
       pcBefore: this.pc,
       pcAfter: this.pc,
       buffersUpdated: ['EX_MEM'],
-      summary: `EX: ALUOut=${formatHex32(ALUOut)}, Zero=${Zero ? 1 : 0}, nextPC=${formatHex32(nextPC)}`,
+      summary: `EX: ALUOut=${formatHex32(ALUOut)}, Zero=${Zero ? 1 : 0}${branchDetail}, nextPC=${formatHex32(nextPC)}`,
     };
   }
 
