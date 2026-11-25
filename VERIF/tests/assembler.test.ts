@@ -236,7 +236,32 @@ describe('Ensamblador - rangos y errores tipo I', () => {
     expect(fuera.diagnostics[0]).toMatchObject({ line: 1, code: 'BRANCH_OUT_OF_RANGE' });
   });
 
-  it('todavia no acepta j (se agrega con el formato J)', () => {
-    expect(assemble('fin: j fin').diagnostics[0]).toMatchObject({ code: 'INVALID_MNEMONIC' });
+});
+
+describe('Ensamblador - instruccion j', () => {
+  it('guarda los bits [27:2] del destino (indice de 26 bits)', () => {
+    const result = assembleOk(['j fin', 'add $t0, $t0, $t0', 'fin: j fin'].join('\n'));
+    expect(result.instructions[0].word).toBe(0x08000002);
+    expect(result.instructions[2].word).toBe(0x08000002);
+    expect(result.instructions[0].format).toBe('J');
+    expect(result.instructions[0].binary).toBe('000010 00000000000000000000000010');
+  });
+
+  it('acepta el prefijo # y una direccion de byte alineada dentro de la region', () => {
+    expect(assembleOk('j #inicio\ninicio: j inicio').instructions[0].word).toBe(0x08000001);
+    expect(assembleOk('j 0x0FFFFFFC').instructions[0].word).toBe(0x0bffffff);
+  });
+
+  it('rechaza un destino desalineado', () => {
+    expect(assemble('j 0x6').diagnostics[0]).toMatchObject({ line: 1, code: 'UNALIGNED_TARGET' });
+  });
+
+  it('rechaza un destino fuera de la region de 256 MiB de PC + 4', () => {
+    expect(assemble('j 0x10000000').diagnostics[0]).toMatchObject({ line: 1, code: 'JUMP_OUT_OF_REGION' });
+  });
+
+  it('reporta etiqueta indefinida y numero de operandos incorrecto', () => {
+    expect(assemble('j nada').diagnostics[0]).toMatchObject({ code: 'UNDEFINED_LABEL' });
+    expect(assemble('fin: j fin, fin').diagnostics[0]).toMatchObject({ code: 'INVALID_SYNTAX' });
   });
 });
