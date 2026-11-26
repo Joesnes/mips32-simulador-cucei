@@ -1,4 +1,6 @@
 :root {
+  color-scheme: dark;
+  accent-color: var(--blue);
   --bg: #050608;
   --bg-elevated: rgba(20, 22, 27, 0.82);
   --bg-card: rgba(28, 30, 38, 0.72);
@@ -25,6 +27,30 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.03);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+  background-clip: padding-box;
 }
 
 html,
@@ -457,10 +483,16 @@ button:disabled {
 
 .datapath-svg {
   width: 100%;
-  min-width: 960px;
+  min-width: 0;
   height: auto;
   display: block;
   user-select: none;
+}
+
+@media (max-width: 960px) {
+  .datapath-svg {
+    min-width: 820px;
+  }
 }
 
 .dp-stage-pill-text {
@@ -617,7 +649,13 @@ button:disabled {
 
 .dp-field-row {
   fill: #d1d1d6;
-  font-size: 10px;
+  font-size: 9.2px;
+  font-family: var(--font-mono);
+}
+
+.dp-pill-text {
+  fill: #d1d1d6;
+  font-size: 9px;
   font-family: var(--font-mono);
 }
 
@@ -1163,12 +1201,19 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
 .listing-header h4 {
   margin: 0;
   font-size: 0.88rem;
+}
+
+.btn-ghost.is-toggled {
+  border-color: var(--blue);
+  color: #7ac0ff;
+  background: rgba(10, 132, 255, 0.14);
 }
 
 .listing-table-wrap,
@@ -1184,17 +1229,28 @@ button:disabled {
 .mem-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
 }
 
 .listing-table th,
-.listing-table td,
+.listing-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: left;
+  white-space: nowrap;
+}
+
 .mem-table th,
 .mem-table td {
   padding: 6px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   text-align: left;
   white-space: nowrap;
+}
+
+.listing-table .src-col {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .listing-table thead th,
@@ -1357,6 +1413,11 @@ tr.is-nonzero td:nth-child(2) {
   font-size: 0.8rem;
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+.checkbox-label input[type='checkbox'] {
+  accent-color: var(--blue);
+  color-scheme: dark;
 }
 
 .row-pill {

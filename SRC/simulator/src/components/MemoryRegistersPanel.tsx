@@ -25,9 +25,10 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
 
   const regChanged = snapshot.lastChange?.registerChanged;
   const memChanged = snapshot.lastChange?.memoryChanged;
-  const activeFetchPc = snapshot.buffers.IF_ID.valid
-    ? snapshot.buffers.IF_ID.pc
-    : snapshot.pc;
+  const activeFetchPc =
+    snapshot.error?.stage === 'IF' || !snapshot.buffers.IF_ID.valid
+      ? snapshot.pc
+      : snapshot.buffers.IF_ID.pc;
 
   // Agrupar IMem en filas de 4 bytes big-endian
   const imemRows: Array<{

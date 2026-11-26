@@ -77,6 +77,12 @@ describe('Datapath View-Model & Explainer (datapathModel.ts)', () => {
     expect(exView.aw).toBe(8);
     expect(exView.nextPC).toBe(4);
     expect(exView.activeBlocks.MIPSALU).toBe(true);
+    expect(exView.activeWires.IDEX_TO_ALUSRC_IMM).toBe(true);
+    expect(exView.activeWires.IDEX_TO_ALUSRC).toBe(false);
+    expect(exView.activeWires.IDEX_TO_REGDST).toBe(true);
+    expect(exView.activeWires.IDEX_RD_TO_REGDST).toBe(false);
+    expect(exView.activeWires.IDEX_PC4_TO_PCSRC).toBe(true);
+    expect(exView.activeWires.BR_ADDER_TO_PCSRC).toBe(false);
     expect(buildStageExplanation(exSnap).tone).toBe('ex');
 
     const memSnap = cpu.stepStage(); // MEM (bypass porque no es lw/sw)
@@ -222,5 +228,33 @@ salto:
       expect(res.ok).toBe(true);
     }
     expect(SELECTION_SORT_DATASETS).toHaveLength(3);
+  });
+
+  it('limpia estado derivado cuando ocurre PC_OUT_OF_RANGE en IF tras completar una instrucción', () => {
+    const asm = assemble('addi $t0, $zero, 5');
+    expect(asm.ok).toBe(true);
+
+    const cpu = new MipsCpu();
+    cpu.loadProgram(asm.bytes);
+    cpu.stepInstruction(); // Completa instrucción 1 -> PC=4, buffers aún válidos
+
+    const errSnap = cpu.stepStage(); // IF en pc=4 -> PC_OUT_OF_RANGE
+    expect(errSnap.status).toBe('ERROR');
+    expect(errSnap.error?.code).toBe('PC_OUT_OF_RANGE');
+    expect(errSnap.error?.stage).toBe('IF');
+
+    const errView = deriveDatapathView(errSnap);
+    const errCtrl = deriveControlSignalsView(errSnap);
+
+    expect(errView.instructionPc).toBe(4);
+    expect(errView.bigEndianBytes).toBeNull();
+    expect(errView.bigEndianReady).toBe(false);
+    expect(errView.irWord).toBeNull();
+    expect(errView.controlsValid).toBe(false);
+    expect(errView.mnemonic).toBe('—');
+    expect(errView.dmemAction).toBe('IDLE');
+    expect(errView.errorBlock).toBe('IMEM');
+    expect(errCtrl.controlsValid).toBe(false);
+    expect(errCtrl.items.every((item) => item.pending && item.displayValue === '—')).toBe(true);
   });
 });

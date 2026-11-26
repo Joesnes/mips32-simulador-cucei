@@ -58,14 +58,17 @@ export type DatapathWireId =
   | 'CTRL_TO_IDEX'
   | 'IDEX_TO_ALU_A'
   | 'IDEX_TO_ALUSRC'
+  | 'IDEX_TO_ALUSRC_IMM'
   | 'ALUSRC_TO_ALU_B'
   | 'IDEX_TO_REGDST'
+  | 'IDEX_RD_TO_REGDST'
   | 'REGDST_TO_EXMEM'
   | 'IDEX_TO_ALUCTL'
   | 'ALUCTL_TO_ALU'
   | 'ALU_TO_EXMEM'
   | 'IDEX_TO_SHIFT'
   | 'SHIFT_TO_BR_ADDER'
+  | 'IDEX_PC4_TO_PCSRC'
   | 'BR_ADDER_TO_PCSRC'
   | 'ALU_ZERO_TO_BRLOGIC'
   | 'BRLOGIC_TO_PCSRC'
@@ -77,6 +80,7 @@ export type DatapathWireId =
   | 'DMEM_TO_MEMWB'
   | 'EXMEM_BYPASS_MEMWB'
   | 'MEMWB_TO_MEMTOREG'
+  | 'MEMWB_MDR_TO_MEMTOREG'
   | 'MEMTOREG_TO_BR_DW'
   | 'MEMWB_TO_BR_AW'
   | 'MEMWB_NEXTPC_TO_PC';
@@ -288,14 +292,17 @@ function createAllWires(initial = false): Record<DatapathWireId, boolean> {
     CTRL_TO_IDEX: initial,
     IDEX_TO_ALU_A: initial,
     IDEX_TO_ALUSRC: initial,
+    IDEX_TO_ALUSRC_IMM: initial,
     ALUSRC_TO_ALU_B: initial,
     IDEX_TO_REGDST: initial,
+    IDEX_RD_TO_REGDST: initial,
     REGDST_TO_EXMEM: initial,
     IDEX_TO_ALUCTL: initial,
     ALUCTL_TO_ALU: initial,
     ALU_TO_EXMEM: initial,
     IDEX_TO_SHIFT: initial,
     SHIFT_TO_BR_ADDER: initial,
+    IDEX_PC4_TO_PCSRC: initial,
     BR_ADDER_TO_PCSRC: initial,
     ALU_ZERO_TO_BRLOGIC: initial,
     BRLOGIC_TO_PCSRC: initial,
@@ -307,6 +314,7 @@ function createAllWires(initial = false): Record<DatapathWireId, boolean> {
     DMEM_TO_MEMWB: initial,
     EXMEM_BYPASS_MEMWB: initial,
     MEMWB_TO_MEMTOREG: initial,
+    MEMWB_MDR_TO_MEMTOREG: initial,
     MEMTOREG_TO_BR_DW: initial,
     MEMWB_TO_BR_AW: initial,
     MEMWB_NEXTPC_TO_PC: initial,
@@ -315,7 +323,7 @@ function createAllWires(initial = false): Record<DatapathWireId, boolean> {
 
 export function deriveControlSignalsView(snapshot: CpuSnapshot): ControlSignalsViewModel {
   const { ID_EX, EX_MEM, MEM_WB } = snapshot.buffers;
-  const controlsValid = ID_EX.valid;
+  const controlsValid = ID_EX.valid && snapshot.error?.stage !== 'IF';
   const ctrl = ID_EX.ctrl;
   const sourceStageLabel = !controlsValid
     ? 'Pendiente de etapa ID'
@@ -501,56 +509,65 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
   const activeStage = snapshot.lastStage;
   const hasError = snapshot.status === 'ERROR' || snapshot.error !== null;
   const errorStage = snapshot.error?.stage ?? null;
-  const controlsValid = ID_EX.valid;
+  const isIfFetchError = snapshot.error?.stage === 'IF';
+
+  const ifIdValid = !isIfFetchError && IF_ID.valid;
+  const idExValid = !isIfFetchError && ID_EX.valid;
+  const exMemValid = !isIfFetchError && EX_MEM.valid;
+  const memWbValid = !isIfFetchError && MEM_WB.valid;
+
+  const controlsValid = idExValid;
   const ctrl = controlsValid ? ID_EX.ctrl : null;
 
   const pc = snapshot.pc;
-  const instructionPc = IF_ID.valid ? IF_ID.pc : pc;
-  const pcPlus4 = IF_ID.valid ? IF_ID.pcPlus4 : ((pc + 4) >>> 0);
-  const pcUpdatedInWB = activeStage === 'WB' && MEM_WB.valid && !hasError;
+  const instructionPc = ifIdValid ? IF_ID.pc : pc;
+  const pcPlus4 = ifIdValid ? IF_ID.pcPlus4 : ((pc + 4) >>> 0);
+  const pcUpdatedInWB = activeStage === 'WB' && memWbValid && !hasError;
 
   // Reunion big-endian de 4 bytes
   let bigEndianBytes: [Byte, Byte, Byte, Byte] | null = null;
   let bigEndianReady = false;
-  if (IF_ID.valid) {
-    bigEndianBytes = IF_ID.bytes;
-    bigEndianReady = true;
-  } else if ((pc & 0x3) === 0 && pc + 3 < snapshot.instructionMemory.length) {
-    bigEndianBytes = [
-      snapshot.instructionMemory[pc],
-      snapshot.instructionMemory[pc + 1],
-      snapshot.instructionMemory[pc + 2],
-      snapshot.instructionMemory[pc + 3],
-    ];
-    bigEndianReady = true;
+  if (!isIfFetchError) {
+    if (ifIdValid) {
+      bigEndianBytes = IF_ID.bytes;
+      bigEndianReady = true;
+    } else if ((pc & 0x3) === 0 && pc + 3 < snapshot.instructionMemory.length) {
+      bigEndianBytes = [
+        snapshot.instructionMemory[pc],
+        snapshot.instructionMemory[pc + 1],
+        snapshot.instructionMemory[pc + 2],
+        snapshot.instructionMemory[pc + 3],
+      ];
+      bigEndianReady = true;
+    }
   }
 
-  const irWord = IF_ID.valid ? IF_ID.instruction : null;
+  const irWord = ifIdValid ? IF_ID.instruction : null;
   const slices = irWord !== null ? extractInstructionSlices(irWord) : null;
 
-  const mnemonic = ID_EX.valid
+  const mnemonic = idExValid
     ? ID_EX.fields.mnemonic
-    : IF_ID.valid
+    : ifIdValid
       ? 'Pendiente ID'
       : '—';
-  const format = ID_EX.valid ? ID_EX.fields.format : null;
+  const format = idExValid ? ID_EX.fields.format : null;
 
-  const ar1 = ID_EX.valid ? ID_EX.fields.rs : slices ? slices.rs : null;
-  const ar2 = ID_EX.valid ? ID_EX.fields.rt : slices ? slices.rt : null;
-  const dr1 = ID_EX.valid ? ID_EX.A : null;
-  const dr2 = ID_EX.valid ? ID_EX.B : null;
+  const ar1 = idExValid ? ID_EX.fields.rs : slices ? slices.rs : null;
+  const ar2 = idExValid ? ID_EX.fields.rt : slices ? slices.rt : null;
+  const dr1 = idExValid ? ID_EX.A : null;
+  const dr2 = idExValid ? ID_EX.B : null;
 
-  const aw = MEM_WB.valid
+  const aw = memWbValid
     ? MEM_WB.writeReg
-    : EX_MEM.valid
+    : exMemValid
       ? EX_MEM.writeReg
-      : ID_EX.valid && ctrl
+      : idExValid && ctrl
         ? ctrl.RegDst === 1
           ? ID_EX.fields.rd
           : ID_EX.fields.rt
         : null;
 
-  const dw = MEM_WB.valid ? MEM_WB.writeBackData : null;
+  const dw = memWbValid ? MEM_WB.writeBackData : null;
 
   const regWriteEnabled = Boolean(ctrl && ctrl.RegWrite === 1);
   const writeDiscardedZero = Boolean(ctrl && ctrl.RegWrite === 1 && aw === 0);
@@ -567,41 +584,41 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
     }
   }
 
-  const immExt = ID_EX.valid ? ID_EX.immExt : null;
+  const immExt = idExValid ? ID_EX.immExt : null;
   const extOpLabel = controlsValid && ctrl ? ctrl.ExtOp : '—';
 
-  const aluA = EX_MEM.valid ? EX_MEM.aluOperandA : ID_EX.valid ? ID_EX.A : null;
-  const aluB = EX_MEM.valid
+  const aluA = exMemValid ? EX_MEM.aluOperandA : idExValid ? ID_EX.A : null;
+  const aluB = exMemValid
     ? EX_MEM.aluOperandB
-    : ID_EX.valid && ctrl
+    : idExValid && ctrl
       ? ctrl.ALUSrc === 1
         ? ID_EX.immExt
         : ID_EX.B
       : null;
-  const aluOut = EX_MEM.valid ? EX_MEM.aluResult : null;
-  const zeroFlag = EX_MEM.valid ? EX_MEM.zero : null;
+  const aluOut = exMemValid ? EX_MEM.aluResult : null;
+  const zeroFlag = exMemValid ? EX_MEM.zero : null;
   const aluCtlLabel =
     controlsValid && ctrl
       ? `${formatAluCtlBits(ctrl.ALUctl)} ${formatAluCtlName(ctrl.ALUctl)}`
       : '—';
 
-  const branchTarget = EX_MEM.valid ? EX_MEM.branchTarget : null;
-  const jumpTarget = EX_MEM.valid ? EX_MEM.jumpTarget : null;
-  const branchTaken = EX_MEM.valid
+  const branchTarget = exMemValid ? EX_MEM.branchTarget : null;
+  const jumpTarget = exMemValid ? EX_MEM.jumpTarget : null;
+  const branchTaken = exMemValid
     ? EX_MEM.branchTaken
     : Boolean(
         ctrl &&
           zeroFlag !== null &&
           ((ctrl.Branch === 1 && zeroFlag) || (ctrl.BranchNe === 1 && !zeroFlag)),
       );
-  const nextPC = MEM_WB.valid
+  const nextPC = memWbValid
     ? MEM_WB.nextPC
-    : EX_MEM.valid
+    : exMemValid
       ? EX_MEM.nextPC
       : null;
 
-  const mdr = MEM_WB.valid && ctrl?.MemRead === 1 ? MEM_WB.memReadData : null;
-  const dmemAction: DatapathViewModel['dmemAction'] = !EX_MEM.valid || !ctrl
+  const mdr = memWbValid && ctrl?.MemRead === 1 ? MEM_WB.memReadData : null;
+  const dmemAction: DatapathViewModel['dmemAction'] = !exMemValid || !ctrl
     ? 'IDLE'
     : ctrl.MemRead === 1
       ? 'READ'
@@ -612,7 +629,7 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
   const muxRegDstSel = controlsValid && ctrl ? ctrl.RegDst : null;
   const muxALUSrcSel = controlsValid && ctrl ? ctrl.ALUSrc : null;
   const muxMemToRegSel = controlsValid && ctrl ? ctrl.MemToReg : null;
-  const muxPCSrcSel: 0 | 1 | null = EX_MEM.valid ? (EX_MEM.branchTaken ? 1 : 0) : null;
+  const muxPCSrcSel: 0 | 1 | null = exMemValid ? (EX_MEM.branchTaken ? 1 : 0) : null;
   const muxJumpSel = controlsValid && ctrl ? ctrl.Jump : null;
 
   const activeBlocks = createAllBlocks(false);
@@ -687,9 +704,17 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
     activeBlocks.EX_MEM = true;
 
     activeWires.IDEX_TO_ALU_A = true;
-    activeWires.IDEX_TO_ALUSRC = true;
+    if (muxALUSrcSel === 1) {
+      activeWires.IDEX_TO_ALUSRC_IMM = true;
+    } else {
+      activeWires.IDEX_TO_ALUSRC = true;
+    }
     activeWires.ALUSRC_TO_ALU_B = true;
-    activeWires.IDEX_TO_REGDST = true;
+    if (muxRegDstSel === 1) {
+      activeWires.IDEX_RD_TO_REGDST = true;
+    } else {
+      activeWires.IDEX_TO_REGDST = true;
+    }
     activeWires.REGDST_TO_EXMEM = true;
     activeWires.IDEX_TO_ALUCTL = true;
     activeWires.ALUCTL_TO_ALU = true;
@@ -702,6 +727,11 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
       activeWires.JUMP_TO_MUXJUMP = true;
     } else {
       activeWires.PCSRC_TO_MUXJUMP = true;
+      if (branchTaken) {
+        activeWires.BR_ADDER_TO_PCSRC = true;
+      } else {
+        activeWires.IDEX_PC4_TO_PCSRC = true;
+      }
     }
 
     if (ctrl && (ctrl.Branch === 1 || ctrl.BranchNe === 1)) {
@@ -710,7 +740,6 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
       activeBlocks.BRANCH_LOGIC = true;
       activeWires.IDEX_TO_SHIFT = true;
       activeWires.SHIFT_TO_BR_ADDER = true;
-      activeWires.BR_ADDER_TO_PCSRC = true;
       activeWires.ALU_ZERO_TO_BRLOGIC = true;
       activeWires.BRLOGIC_TO_PCSRC = true;
     }
@@ -732,7 +761,11 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
     activeBlocks.MEM_WB = true;
     activeBlocks.MUX_MEMTOREG = true;
     activeBlocks.PC = true;
-    activeWires.MEMWB_TO_MEMTOREG = true;
+    if (muxMemToRegSel === 1) {
+      activeWires.MEMWB_MDR_TO_MEMTOREG = true;
+    } else {
+      activeWires.MEMWB_TO_MEMTOREG = true;
+    }
     activeWires.MEMWB_NEXTPC_TO_PC = true;
     if (regWriteEnabled) {
       activeBlocks.BR = true;
@@ -919,7 +952,12 @@ export function getBlockInspectorInfo(
   snapshot: CpuSnapshot,
 ): BlockInspectorInfo {
   const { IF_ID, ID_EX, EX_MEM, MEM_WB } = snapshot.buffers;
-  const f = ID_EX.valid ? ID_EX.fields : null;
+  const isIfErr = view.errorStage === 'IF';
+  const ifIdValid = !isIfErr && IF_ID.valid;
+  const idExValid = !isIfErr && ID_EX.valid;
+  const exMemValid = !isIfErr && EX_MEM.valid;
+  const memWbValid = !isIfErr && MEM_WB.valid;
+  const f = idExValid ? ID_EX.fields : null;
 
   switch (blockId) {
     case 'PC':
@@ -995,9 +1033,9 @@ export function getBlockInspectorInfo(
         beginnerSummary:
           'Registro intermedio que congela la instrucción recién leída y su PC+4 para que la etapa ID pueda analizarlos en el siguiente ciclo.',
         liveValues: [
-          { label: 'Estado', value: IF_ID.valid ? 'Válido' : 'Vacío' },
-          { label: 'IR', value: IF_ID.valid ? formatHex32(IF_ID.instruction) : '—' },
-          { label: 'PC+4', value: IF_ID.valid ? formatHex32(IF_ID.pcPlus4) : '—' },
+          { label: 'Estado', value: ifIdValid ? 'Válido' : 'Vacío' },
+          { label: 'IR', value: ifIdValid ? formatHex32(IF_ID.instruction) : '—' },
+          { label: 'PC+4', value: ifIdValid ? formatHex32(IF_ID.pcPlus4) : '—' },
         ],
       };
     case 'FIELDS':
@@ -1088,9 +1126,9 @@ export function getBlockInspectorInfo(
         beginnerSummary:
           'Guarda los operandos leídos del Banco de Registros, el inmediato extendido y todas las señales de control listas para usarse en EX, MEM y WB.',
         liveValues: [
-          { label: 'Estado', value: ID_EX.valid ? 'Válido' : 'Vacío' },
-          { label: 'A / B', value: ID_EX.valid ? `${formatHex32(ID_EX.A)} / ${formatHex32(ID_EX.B)}` : '—' },
-          { label: 'immExt', value: ID_EX.valid ? formatHex32(ID_EX.immExt) : '—' },
+          { label: 'Estado', value: idExValid ? 'Válido' : 'Vacío' },
+          { label: 'A / B', value: idExValid ? `${formatHex32(ID_EX.A)} / ${formatHex32(ID_EX.B)}` : '—' },
+          { label: 'immExt', value: idExValid ? formatHex32(ID_EX.immExt) : '—' },
         ],
       };
     case 'MUX_REGDST':
@@ -1185,7 +1223,7 @@ export function getBlockInspectorInfo(
         liveValues: [
           { label: 'Branch / BranchNe', value: view.controlsValid && view.ctrl ? `${view.ctrl.Branch} / ${view.ctrl.BranchNe}` : '—' },
           { label: 'Zero', value: view.zeroFlag !== null ? (view.zeroFlag ? '1' : '0') : '—' },
-          { label: 'branchTaken', value: EX_MEM.valid ? (view.branchTaken ? '1 (Tomado)' : '0 (No tomado)') : '—' },
+          { label: 'branchTaken', value: exMemValid ? (view.branchTaken ? '1 (Tomado)' : '0 (No tomado)') : '—' },
         ],
       };
     case 'MUX_PCSRC':
@@ -1198,7 +1236,7 @@ export function getBlockInspectorInfo(
           'Elige entre avanzar secuencialmente (PC+4) o saltar a branchTarget si se cumplió beq/bne.',
         liveValues: [
           { label: 'Selector branchTaken', value: view.muxPCSrcSel !== null ? String(view.muxPCSrcSel) : '—' },
-          { label: 'Salida', value: EX_MEM.valid ? formatHex32(view.branchTaken ? EX_MEM.branchTarget : view.pcPlus4) : '—' },
+          { label: 'Salida', value: exMemValid ? formatHex32(view.branchTaken ? EX_MEM.branchTarget : view.pcPlus4) : '—' },
         ],
       };
     case 'JUMP_CONCAT':
@@ -1236,9 +1274,9 @@ export function getBlockInspectorInfo(
         beginnerSummary:
           'Conserva el resultado de la ALU (que puede ser un dato o una dirección de memoria), el registro destino y el nextPC calculado.',
         liveValues: [
-          { label: 'Estado', value: EX_MEM.valid ? 'Válido' : 'Vacío' },
-          { label: 'ALUOut / Zero', value: EX_MEM.valid ? `${formatHex32(EX_MEM.aluResult)} / ${EX_MEM.zero ? 1 : 0}` : '—' },
-          { label: 'nextPC', value: EX_MEM.valid ? formatHex32(EX_MEM.nextPC) : '—' },
+          { label: 'Estado', value: exMemValid ? 'Válido' : 'Vacío' },
+          { label: 'ALUOut / Zero', value: exMemValid ? `${formatHex32(EX_MEM.aluResult)} / ${EX_MEM.zero ? 1 : 0}` : '—' },
+          { label: 'nextPC', value: exMemValid ? formatHex32(EX_MEM.nextPC) : '—' },
         ],
       };
     case 'DMEM':
@@ -1251,8 +1289,8 @@ export function getBlockInspectorInfo(
           'Guarda los arreglos y variables del programa en orden big-endian (4 bytes por palabra). Solo trabaja en lw (MemRead=1) o sw (MemWrite=1); exige direcciones múltiplos de 4.',
         liveValues: [
           { label: 'Acción', value: view.dmemAction },
-          { label: 'Address (ALUOut)', value: EX_MEM.valid ? formatHex32(EX_MEM.aluResult) : '—' },
-          { label: 'WriteData / MDR', value: EX_MEM.valid ? `${formatHex32(EX_MEM.writeData)} / ${view.mdr !== null ? formatHex32(view.mdr) : '—'}` : '—' },
+          { label: 'Address (ALUOut)', value: exMemValid ? formatHex32(EX_MEM.aluResult) : '—' },
+          { label: 'WriteData / MDR', value: exMemValid ? `${formatHex32(EX_MEM.writeData)} / ${view.mdr !== null ? formatHex32(view.mdr) : '—'}` : '—' },
         ],
       };
     case 'MEM_WB':
@@ -1264,9 +1302,9 @@ export function getBlockInspectorInfo(
         beginnerSummary:
           'Guarda el valor final Dw listo para escribirse en el Banco de Registros y el nextPC que actualizará al Contador de Programa en WB.',
         liveValues: [
-          { label: 'Estado', value: MEM_WB.valid ? 'Válido' : 'Vacío' },
-          { label: 'Dw (writeBackData)', value: MEM_WB.valid ? formatHex32(MEM_WB.writeBackData) : '—' },
-          { label: 'AW / nextPC', value: MEM_WB.valid ? `${registerLabel(MEM_WB.writeReg)} / ${formatHex32(MEM_WB.nextPC)}` : '—' },
+          { label: 'Estado', value: memWbValid ? 'Válido' : 'Vacío' },
+          { label: 'Dw (writeBackData)', value: memWbValid ? formatHex32(MEM_WB.writeBackData) : '—' },
+          { label: 'AW / nextPC', value: memWbValid ? `${registerLabel(MEM_WB.writeReg)} / ${formatHex32(MEM_WB.nextPC)}` : '—' },
         ],
       };
     case 'MUX_MEMTOREG':

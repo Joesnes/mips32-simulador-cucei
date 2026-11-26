@@ -48,6 +48,8 @@ export function EditorControls({
     if (preset.datasets && preset.datasets.length > 0) {
       setSelectedDatasetId(preset.datasets[0].id);
       onLoadDataset(preset.datasets[0].initialMemory);
+    } else {
+      onLoadDataset([]);
     }
   };
 

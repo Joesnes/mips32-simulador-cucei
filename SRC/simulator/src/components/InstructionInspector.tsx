@@ -3,6 +3,7 @@
  * Inspector de instruccion actual (32 bits por campo: opcode, rs, rt, rd, shamt, funct, imm, index)
  * y listado ensamblado (direccion, hex, binario, fuente).
  */
+import { useState } from 'react';
 import type { AssembleResult, CpuSnapshot } from '@core/types';
 import {
   REGISTER_NAMES,
@@ -29,6 +30,7 @@ export function InstructionInspector({
   snapshot,
   assembleResult,
 }: InstructionInspectorProps) {
+  const [showBinaryCol, setShowBinaryCol] = useState(false);
   const view = deriveDatapathView(snapshot);
   const { IF_ID, ID_EX } = snapshot.buffers;
 
@@ -38,7 +40,7 @@ export function InstructionInspector({
   const activeInstr = assembleResult?.instructions.find(
     (ins) => ins.address === view.instructionPc,
   );
-  const detectedFormat = ID_EX.valid
+  const detectedFormat = view.controlsValid && ID_EX.valid
     ? ID_EX.fields.format
     : activeInstr?.format ?? (view.slices?.opcode === 0 ? 'R' : view.slices?.opcode === 2 ? 'J' : 'I');
 
@@ -151,9 +153,9 @@ export function InstructionInspector({
           </p>
         </div>
         <span className="badge">
-          {ID_EX.valid
+          {view.controlsValid && ID_EX.valid
             ? `${ID_EX.fields.mnemonic} · Formato ${ID_EX.fields.format}`
-            : IF_ID.valid
+            : IF_ID.valid && view.irWord !== null
               ? `IR cargado (${detectedFormat})`
               : `${assembleResult?.instructions.length ?? 0} instr.`}
         </span>
@@ -196,12 +198,24 @@ export function InstructionInspector({
       {/* Assembled Listing Table */}
       <div className="listing-section">
         <div className="listing-header">
-          <h4>Listado Ensamblado</h4>
-          <span className="muted">
-            {assembleResult?.ok
-              ? `${assembleResult.instructions.length} instrucciones en IMem`
-              : 'Ensambla el programa para ver el listado'}
-          </span>
+          <div>
+            <h4>Listado Ensamblado</h4>
+            <span className="muted">
+              {assembleResult?.ok
+                ? `${assembleResult.instructions.length} instrucciones en IMem`
+                : 'Ensambla el programa para ver el listado'}
+            </span>
+          </div>
+          {assembleResult?.ok && assembleResult.instructions.length > 0 && (
+            <button
+              type="button"
+              className={`btn-ghost btn-sm ${showBinaryCol ? 'is-toggled' : ''}`}
+              onClick={() => setShowBinaryCol((v) => !v)}
+              aria-pressed={showBinaryCol}
+            >
+              {showBinaryCol ? 'Ocultar binario' : 'Ver binario 32b'}
+            </button>
+          )}
         </div>
 
         {assembleResult?.ok && assembleResult.instructions.length > 0 ? (
@@ -211,7 +225,7 @@ export function InstructionInspector({
                 <tr>
                   <th>Dir.</th>
                   <th>Hex</th>
-                  <th>Binario por campos</th>
+                  {showBinaryCol && <th>Binario por campos</th>}
                   <th>Fuente ASM</th>
                 </tr>
               </thead>
@@ -226,9 +240,11 @@ export function InstructionInspector({
                       <td>
                         <code>{ins.hex}</code>
                       </td>
-                      <td>
-                        <code className="bin-col">{ins.binary}</code>
-                      </td>
+                      {showBinaryCol && (
+                        <td>
+                          <code className="bin-col">{ins.binary}</code>
+                        </td>
+                      )}
                       <td className="src-col">
                         {isActive && <span className="pc-dot" title="PC actual" />}
                         <code>{ins.source}</code>
