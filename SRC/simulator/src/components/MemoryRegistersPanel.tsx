@@ -1,17 +1,18 @@
 /**
  * PROPIETARIO: Fares Khalifa (Dia 6)
- * Visualizador del Banco de Registros ($0-$31), Memoria de Instrucciones (bytes big-endian)
- * y Memoria de Datos (palabras/bytes big-endian) con resaltado de cambios.
+ * Visualizador del Banco de Registros ($0-$31), Memoria de Instrucciones y Memoria de Datos
+ * exclusivamente en formato Decimal y Binario (Big-Endian).
  */
 import { useState } from 'react';
 import type { CpuSnapshot } from '@core/types';
+import { REGISTER_NAMES, bytesToWordBigEndian, toInt32 } from '@core/isa';
 import {
-  REGISTER_NAMES,
-  bytesToWordBigEndian,
-  formatHex32,
-  formatHexByte,
-  toInt32,
-} from '@core/isa';
+  fmtAddrDec,
+  fmtByteBin,
+  fmtByteDec,
+  fmtSignedDec,
+  fmtWordBin32,
+} from '../utils/numberFormat';
 
 export interface MemoryRegistersPanelProps {
   snapshot: CpuSnapshot;
@@ -83,7 +84,7 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
         <div>
           <h2>Banco de Registros y Memorias</h2>
           <p className="muted">
-            {snapshot.lastChange?.summary ?? 'Estado inicial limpio (Big-Endian)'}
+            Valores mostrados exclusivamente en Decimal (con signo) y Binario de 32 bits.
           </p>
         </div>
         <div className="mem-tabs" role="tablist" aria-label="Inspección de estado">
@@ -124,11 +125,11 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
             <strong>
               Error en etapa {snapshot.error.stage} [{snapshot.error.code}]
             </strong>{' '}
-            · PC=<code>{formatHex32(snapshot.error.pc)}</code>
+            · PC=<code>{fmtAddrDec(snapshot.error.pc)}</code>
             {snapshot.error.address !== undefined && (
               <>
                 {' '}
-                · Dirección=<code>{formatHex32(snapshot.error.address)}</code>
+                · Dirección=<code>{fmtAddrDec(snapshot.error.address)}</code>
               </>
             )}
           </div>
@@ -157,13 +158,13 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
                   {idx === 0 && <span className="reg-tag">Fijo 0</span>}
                   {isChanged && <span className="reg-tag reg-tag--change">Actualizado</span>}
                 </div>
-                <div className="reg-card-values">
-                  <code>{formatHex32(val)}</code>
-                  <span className="reg-dec">{signedVal}</span>
+                <div className="reg-card-values reg-card-values--stack">
+                  <span className="reg-dec-big">{signedVal}</span>
+                  <code className="reg-bin32">{fmtWordBin32(val)}</code>
                 </div>
                 {isChanged && regChanged && (
                   <div className="reg-diff">
-                    Antes: <code>{formatHex32(regChanged.before)}</code>
+                    Antes: <code>{fmtSignedDec(regChanged.before)}</code>
                   </div>
                 )}
               </div>
@@ -172,7 +173,7 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
         </div>
       )}
 
-      {/* Tab 2: Instruction Memory (byte-by-byte Big-Endian) */}
+      {/* Tab 2: Instruction Memory (byte-by-byte Big-Endian in Binary + Decimal) */}
       {activeTab === 'imem' && (
         <div className="mem-table-wrap">
           {imemRows.length === 0 ? (
@@ -183,12 +184,12 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
             <table className="mem-table">
               <thead>
                 <tr>
-                  <th>Dirección base</th>
+                  <th>Dirección (byte)</th>
                   <th>Byte +0 (MSB)</th>
                   <th>Byte +1</th>
                   <th>Byte +2</th>
                   <th>Byte +3 (LSB)</th>
-                  <th>Palabra 32b (Big-Endian)</th>
+                  <th>Palabra 32 bits (Binario)</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,18 +198,20 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
                   return (
                     <tr key={row.address} className={isActivePc ? 'is-active-pc' : ''}>
                       <td>
-                        <code>{formatHex32(row.address)}</code>
+                        <code>{row.address}</code>
                         {isActivePc && <span className="row-pill">PC..PC+3</span>}
                       </td>
                       {row.bytes.map((b, i) => (
                         <td key={i}>
                           <code className="byte-cell">
-                            {b !== null ? `0x${formatHexByte(b)}` : '--'}
+                            {b !== null ? `${fmtByteBin(b)} (${fmtByteDec(b)})` : '--'}
                           </code>
                         </td>
                       ))}
                       <td>
-                        <code>{row.word !== null ? formatHex32(row.word) : '—'}</code>
+                        <code className="bin-col">
+                          {row.word !== null ? fmtWordBin32(row.word) : '—'}
+                        </code>
                       </td>
                     </tr>
                   );
@@ -219,7 +222,7 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
         </div>
       )}
 
-      {/* Tab 3: Data Memory (word + 4 bytes Big-Endian) */}
+      {/* Tab 3: Data Memory (Decimal + 32b Binary + Big-Endian Bytes) */}
       {activeTab === 'dmem' && (
         <div>
           <div className="dmem-toolbar">
@@ -233,25 +236,23 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
             </label>
             {memChanged && (
               <span className="badge badge-ok">
-                Última escritura: {formatHex32(memChanged.address)} ({formatHex32(memChanged.before)} →{' '}
-                {formatHex32(memChanged.after)})
+                Última escritura: {fmtAddrDec(memChanged.address)} (
+                {fmtSignedDec(memChanged.before)} → {fmtSignedDec(memChanged.after)})
               </span>
             )}
           </div>
 
           <div className="mem-table-wrap">
             {visibleDmemRows.length === 0 ? (
-              <p className="muted">
-                Todas las palabras de Memoria de Datos están en 0x00000000.
-              </p>
+              <p className="muted">Todas las palabras de Memoria de Datos están en 0.</p>
             ) : (
               <table className="mem-table">
                 <thead>
                   <tr>
-                    <th>Dirección</th>
-                    <th>Palabra 32b (Hex)</th>
-                    <th>Entero (con signo)</th>
-                    <th>Bytes Big-Endian [+0..+3]</th>
+                    <th>Dirección (byte)</th>
+                    <th>Valor Decimal (con signo)</th>
+                    <th>Palabra 32 bits (Binario)</th>
+                    <th>4 Bytes Big-Endian (dec)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,18 +266,18 @@ export function MemoryRegistersPanel({ snapshot }: MemoryRegistersPanelProps) {
                         }`}
                       >
                         <td>
-                          <code>{formatHex32(row.address)}</code>
+                          <code>{row.address}</code>
                           {isModified && <span className="row-pill row-pill--green">Modificado</span>}
                         </td>
                         <td>
-                          <code>{formatHex32(row.word)}</code>
+                          <strong>{row.signed}</strong>
                         </td>
                         <td>
-                          <code>{row.signed}</code>
+                          <code className="bin-col">{fmtWordBin32(row.word)}</code>
                         </td>
                         <td>
                           <code className="bytes-inline">
-                            [{row.bytes.map(formatHexByte).join(' ')}]
+                            [{row.bytes.map(fmtByteDec).join(', ')}]
                           </code>
                         </td>
                       </tr>

@@ -219,6 +219,70 @@ salto:
 
     const info = getBlockInspectorInfo('BIG_ENDIAN', pcErrView, pcErr);
     expect(info.bitRanges.length).toBeGreaterThan(0);
+    expect(info.inputs.length).toBeGreaterThan(0);
+    expect(info.outputs.length).toBeGreaterThan(0);
+  });
+
+  it('evita peek-ahead entre etapas y usa exclusivamente binario y decimal (cero 0x)', () => {
+    const asm = assemble('addi $t0, $zero, 12');
+    expect(asm.ok).toBe(true);
+
+    const cpu = new MipsCpu();
+    cpu.loadProgram(asm.bytes);
+
+    // READY: no muestra bytes ni valores adelantados
+    const readySnap = cpu.getSnapshot();
+    const readyView = deriveDatapathView(readySnap);
+    expect(readyView.bigEndianBytes).toBeNull();
+    expect(readyView.stageReached.IF).toBe(false);
+    expect(readyView.ar1).toBeNull();
+    expect(readyView.aluA).toBeNull();
+
+    // IF: solo IF activo; BR y ALU aun en espera
+    const ifSnap = cpu.stepStage();
+    const ifView = deriveDatapathView(ifSnap);
+    expect(ifView.stageReached.IF).toBe(true);
+    expect(ifView.stageReached.ID).toBe(false);
+    expect(ifView.ar1).toBeNull();
+    expect(ifView.dr1).toBeNull();
+    expect(ifView.aluA).toBeNull();
+    expect(ifView.aluOut).toBeNull();
+
+    // ID: campos y BR llenos, ALU aun en espera
+    const idSnap = cpu.stepStage();
+    const idView = deriveDatapathView(idSnap);
+    expect(idView.stageReached.ID).toBe(true);
+    expect(idView.stageReached.EX).toBe(false);
+    expect(idView.dr1).toBe(0);
+    expect(idView.aluA).toBeNull();
+    expect(idView.aluOut).toBeNull();
+
+    const exSnap = cpu.stepStage();
+    const memSnap = cpu.stepStage();
+    const wbSnap = cpu.stepStage();
+
+    // Verifica que ni explicaciones, ni senales, ni el inspector de bloques tengan prefijos hex (0x)
+    const blockIds = ['PC', 'IMEM', 'BIG_ENDIAN', 'FIELDS', 'CONTROL', 'BR', 'EXTENDER', 'MIPSALU', 'DMEM', 'MUX_MEMTOREG'] as const;
+    for (const snap of [readySnap, ifSnap, idSnap, exSnap, memSnap, wbSnap]) {
+      const view = deriveDatapathView(snap);
+      const exp = buildStageExplanation(snap);
+      const ctrl = deriveControlSignalsView(snap);
+      expect(`${exp.title} ${exp.headline} ${exp.detail}`).not.toMatch(/0x[0-9a-f]+/i);
+      expect(view.cycleSummary).not.toMatch(/0x[0-9a-f]+/i);
+      for (const item of ctrl.items) {
+        expect(`${item.displayValue} ${item.meaning}`).not.toMatch(/0x[0-9a-f]+/i);
+      }
+      for (const id of blockIds) {
+        const info = getBlockInspectorInfo(id, view, snap);
+        expect(info.inputs.length).toBeGreaterThan(0);
+        expect(info.outputs.length).toBeGreaterThan(0);
+        for (const p of [...info.inputs, ...info.outputs]) {
+          expect(p.binary.length).toBeGreaterThan(0);
+          expect(p.decimalMeaning.length).toBeGreaterThan(0);
+          expect(`${p.binary} ${p.decimalMeaning}`).not.toMatch(/0x[0-9a-f]+/i);
+        }
+      }
+    }
   });
 
   it('todos los presets integrados (incluyendo DEFAULT_SOURCE y Selection Sort) ensamblan sin errores', () => {

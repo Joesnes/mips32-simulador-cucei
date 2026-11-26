@@ -1,10 +1,4 @@
-import {
-  ALU_CTL,
-  REGISTER_NAMES,
-  formatHex32,
-  formatHexByte,
-  toInt32,
-} from '@core/isa';
+import { ALU_CTL, REGISTER_NAMES } from '@core/isa';
 import type {
   AluControlCode,
   Byte,
@@ -13,6 +7,15 @@ import type {
   Stage,
   Word32,
 } from '@core/types';
+import {
+  fmtAddrDec,
+  fmtBits,
+  fmtByteBin,
+  fmtByteDec,
+  fmtSignedDec,
+  fmtUnsignedDec,
+  fmtWordBin32,
+} from './numberFormat';
 
 export type DatapathBlockId =
   | 'PC'
@@ -112,6 +115,7 @@ export interface RawInstructionSlices {
   shamt: number;
   funct: number;
   imm16: number;
+  immSigned: number;
   jumpIndex: number;
 }
 
@@ -124,18 +128,28 @@ export interface StageExplanation {
   nextHint: string;
 }
 
+export interface InspectorPortSignal {
+  name: string;
+  binary: string;
+  decimalMeaning: string;
+}
+
 export interface BlockInspectorInfo {
   id: DatapathBlockId;
   title: string;
   stageTag: string;
   bitRanges: string[];
   beginnerSummary: string;
+  inputs: InspectorPortSignal[];
+  outputs: InspectorPortSignal[];
   liveValues: Array<{ label: string; value: string }>;
 }
 
 export interface DatapathViewModel {
   activeStage: Stage | null;
   nextStage: Stage;
+  stageReached: Record<Stage, boolean>;
+  cycleSummary: string;
   isIdle: boolean;
   hasError: boolean;
   errorStage: Stage | null;
@@ -226,6 +240,7 @@ export function formatAluOpMeaning(op: ControlSignals['ALUOp']): string {
 
 export function extractInstructionSlices(word: Word32): RawInstructionSlices {
   const u = word >>> 0;
+  const imm16 = u & 0xffff;
   return {
     raw: u,
     opcode: (u >>> 26) & 0x3f,
@@ -234,7 +249,8 @@ export function extractInstructionSlices(word: Word32): RawInstructionSlices {
     rd: (u >>> 11) & 0x1f,
     shamt: (u >>> 6) & 0x1f,
     funct: u & 0x3f,
-    imm16: u & 0xffff,
+    imm16,
+    immSigned: (imm16 & 0x8000) !== 0 ? imm16 - 0x10000 : imm16,
     jumpIndex: u & 0x03ffffff,
   };
 }
@@ -515,6 +531,15 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
   const idExValid = !isIfFetchError && ID_EX.valid;
   const exMemValid = !isIfFetchError && EX_MEM.valid;
   const memWbValid = !isIfFetchError && MEM_WB.valid;
+  const pcUpdatedInWB = activeStage === 'WB' && memWbValid && !hasError;
+
+  const stageReached: Record<Stage, boolean> = {
+    IF: ifIdValid,
+    ID: idExValid,
+    EX: exMemValid,
+    MEM: memWbValid,
+    WB: pcUpdatedInWB,
+  };
 
   const controlsValid = idExValid;
   const ctrl = controlsValid ? ID_EX.ctrl : null;
@@ -522,25 +547,10 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
   const pc = snapshot.pc;
   const instructionPc = ifIdValid ? IF_ID.pc : pc;
   const pcPlus4 = ifIdValid ? IF_ID.pcPlus4 : ((pc + 4) >>> 0);
-  const pcUpdatedInWB = activeStage === 'WB' && memWbValid && !hasError;
 
-  // Reunion big-endian de 4 bytes
-  let bigEndianBytes: [Byte, Byte, Byte, Byte] | null = null;
-  let bigEndianReady = false;
-  if (!isIfFetchError) {
-    if (ifIdValid) {
-      bigEndianBytes = IF_ID.bytes;
-      bigEndianReady = true;
-    } else if ((pc & 0x3) === 0 && pc + 3 < snapshot.instructionMemory.length) {
-      bigEndianBytes = [
-        snapshot.instructionMemory[pc],
-        snapshot.instructionMemory[pc + 1],
-        snapshot.instructionMemory[pc + 2],
-        snapshot.instructionMemory[pc + 3],
-      ];
-      bigEndianReady = true;
-    }
-  }
+  // Sin "peek-ahead": en READY (antes de IF) los bytes permanecen ocultos hasta que corra IF.
+  const bigEndianBytes: [Byte, Byte, Byte, Byte] | null = ifIdValid ? IF_ID.bytes : null;
+  const bigEndianReady = ifIdValid;
 
   const irWord = ifIdValid ? IF_ID.instruction : null;
   const slices = irWord !== null ? extractInstructionSlices(irWord) : null;
@@ -552,8 +562,9 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
       : '—';
   const format = idExValid ? ID_EX.fields.format : null;
 
-  const ar1 = idExValid ? ID_EX.fields.rs : slices ? slices.rs : null;
-  const ar2 = idExValid ? ID_EX.fields.rt : slices ? slices.rt : null;
+  // Sin "peek-ahead": BR solo lee sus entradas cuando ID ya se ejecutó.
+  const ar1 = idExValid ? ID_EX.fields.rs : null;
+  const ar2 = idExValid ? ID_EX.fields.rt : null;
   const dr1 = idExValid ? ID_EX.A : null;
   const dr2 = idExValid ? ID_EX.B : null;
 
@@ -573,28 +584,25 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
   const writeDiscardedZero = Boolean(ctrl && ctrl.RegWrite === 1 && aw === 0);
   const writeDisabledRegWrite = Boolean(ctrl && ctrl.RegWrite === 0);
 
-  let brStatusLabel = 'Inactivo';
+  let brStatusLabel = 'En espera de ID';
   if (controlsValid && ctrl) {
     if (ctrl.RegWrite === 0) {
-      brStatusLabel = 'Deshabilitado (RegWrite=0)';
+      brStatusLabel = 'Sin escritura (RegWrite=0)';
     } else if (aw === 0) {
       brStatusLabel = '$zero inmutable (AW=$0)';
     } else if (aw !== null) {
-      brStatusLabel = `Destino: ${REGISTER_NAMES[aw]}`;
+      brStatusLabel = pcUpdatedInWB
+        ? `Escrito en ${REGISTER_NAMES[aw]}`
+        : `Destino: ${REGISTER_NAMES[aw]}`;
     }
   }
 
   const immExt = idExValid ? ID_EX.immExt : null;
   const extOpLabel = controlsValid && ctrl ? ctrl.ExtOp : '—';
 
-  const aluA = exMemValid ? EX_MEM.aluOperandA : idExValid ? ID_EX.A : null;
-  const aluB = exMemValid
-    ? EX_MEM.aluOperandB
-    : idExValid && ctrl
-      ? ctrl.ALUSrc === 1
-        ? ID_EX.immExt
-        : ID_EX.B
-      : null;
+  // Sin "peek-ahead": la ALU solo muestra operandos/salida cuando EX ya se ejecutó.
+  const aluA = exMemValid ? EX_MEM.aluOperandA : null;
+  const aluB = exMemValid ? EX_MEM.aluOperandB : null;
   const aluOut = exMemValid ? EX_MEM.aluResult : null;
   const zeroFlag = exMemValid ? EX_MEM.zero : null;
   const aluCtlLabel =
@@ -604,13 +612,7 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
 
   const branchTarget = exMemValid ? EX_MEM.branchTarget : null;
   const jumpTarget = exMemValid ? EX_MEM.jumpTarget : null;
-  const branchTaken = exMemValid
-    ? EX_MEM.branchTaken
-    : Boolean(
-        ctrl &&
-          zeroFlag !== null &&
-          ((ctrl.Branch === 1 && zeroFlag) || (ctrl.BranchNe === 1 && !zeroFlag)),
-      );
+  const branchTaken = exMemValid ? EX_MEM.branchTaken : false;
   const nextPC = memWbValid
     ? MEM_WB.nextPC
     : exMemValid
@@ -774,9 +776,37 @@ export function deriveDatapathView(snapshot: CpuSnapshot): DatapathViewModel {
     }
   }
 
+  let cycleSummary = `Ciclo 0 · Procesador listo en ${fmtAddrDec(pc)}. Pulsa "+ Etapa (IF)" para iniciar.`;
+  if (hasError && snapshot.error) {
+    cycleSummary = `Error en etapa ${snapshot.error.stage} (${snapshot.error.code}): ${snapshot.error.message}`;
+  } else if (activeStage === 'IF' && bigEndianBytes) {
+    cycleSummary = `Ciclo ${snapshot.cycle} · IF: Leyó 4 bytes [${bigEndianBytes.map(fmtByteDec).join(', ')}] en ${fmtAddrDec(instructionPc)} → IR armado`;
+  } else if (activeStage === 'ID' && idExValid) {
+    cycleSummary = `Ciclo ${snapshot.cycle} · ID: Decodificó ${ID_EX.fields.mnemonic} (${ID_EX.fields.format}) · DR1=${fmtSignedDec(ID_EX.A)}, DR2=${fmtSignedDec(ID_EX.B)}`;
+  } else if (activeStage === 'EX' && exMemValid) {
+    cycleSummary = `Ciclo ${snapshot.cycle} · EX: MIPSALU (${formatAluCtlName(EX_MEM.ctrl.ALUctl)}) → ${fmtSignedDec(EX_MEM.aluOperandA)} y ${fmtSignedDec(EX_MEM.aluOperandB)} = ${fmtSignedDec(EX_MEM.aluResult)} · nextPC=${fmtAddrDec(EX_MEM.nextPC)}`;
+  } else if (activeStage === 'MEM' && memWbValid) {
+    cycleSummary =
+      dmemAction === 'READ'
+        ? `Ciclo ${snapshot.cycle} · MEM: lw leyó ${fmtSignedDec(MEM_WB.memReadData)} desde DMem[${fmtUnsignedDec(MEM_WB.aluResult)}]`
+        : dmemAction === 'WRITE'
+          ? `Ciclo ${snapshot.cycle} · MEM: sw escribió ${fmtSignedDec(EX_MEM.writeData)} en DMem[${fmtUnsignedDec(EX_MEM.aluResult)}]`
+          : `Ciclo ${snapshot.cycle} · MEM: Sin acceso a DMem → pasa Dw = ${fmtSignedDec(MEM_WB.writeBackData)}`;
+  } else if (activeStage === 'WB' && memWbValid) {
+    const regTxt =
+      MEM_WB.ctrl.RegWrite === 0
+        ? 'Sin escritura en BR'
+        : MEM_WB.writeReg === 0
+          ? '$zero protegido (0)'
+          : `${REGISTER_NAMES[MEM_WB.writeReg]} = ${fmtSignedDec(MEM_WB.writeBackData)}`;
+    cycleSummary = `Ciclo ${snapshot.cycle} · WB: ${regTxt} · Nuevo PC = ${fmtAddrDec(pc)}`;
+  }
+
   return {
     activeStage,
     nextStage: snapshot.nextStage,
+    stageReached,
+    cycleSummary,
     isIdle: activeStage === null && snapshot.status === 'READY',
     hasError,
     errorStage,
@@ -847,7 +877,7 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
       title: 'Programa terminado (Autosalto detectado)',
       badge: 'HALTED_SELFLOOP',
       tone: 'halted',
-      headline: `La instrucción "${loopInstr}" saltó sobre sí misma en PC = ${formatHex32(snapshot.pc)}.`,
+      headline: `La instrucción "${loopInstr}" saltó sobre sí misma en PC = ${fmtAddrDec(snapshot.pc)}.`,
       detail: `Se completaron ${snapshot.instructionsExecuted} instrucciones en ${snapshot.cycle} ciclos. Los resultados finales ya están en el Banco de Registros y la Memoria de Datos.`,
       nextHint: 'Inspecciona los valores finales o presiona "Reiniciar" para volver a ejecutar.',
     };
@@ -858,7 +888,7 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
       title: 'Procesador listo para iniciar',
       badge: 'READY · Ciclo 0',
       tone: 'neutral',
-      headline: `PC apunta a ${formatHex32(snapshot.pc)}. Los 4 buffers intermedios están vacíos.`,
+      headline: `PC apunta al ${fmtAddrDec(snapshot.pc)}. Los 4 buffers intermedios están vacíos.`,
       detail:
         'En el diseño multiciclo, cada instrucción recorre 5 etapas consecutivas (IF → ID → EX → MEM → WB) antes de pasar a la siguiente.',
       nextHint: 'Pulsa "+ Etapa (IF)", "+ Instrucción" o "Play" para ver viajar los datos.',
@@ -867,13 +897,13 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
 
   switch (snapshot.lastStage) {
     case 'IF': {
-      const bytesStr = IF_ID.bytes.map(formatHexByte).join(' ');
+      const bytesDec = IF_ID.bytes.map(fmtByteDec).join(', ');
       return {
         title: 'Etapa 1 — IF (Búsqueda de Instrucción)',
         badge: 'IF completada · Cargó IF/ID',
         tone: 'if',
-        headline: `IMem leyó 4 bytes big-endian [${bytesStr}] desde ${formatHex32(IF_ID.pc)} y formó IR = ${formatHex32(IF_ID.instruction)}.`,
-        detail: `Al mismo tiempo, el sumador calculó PC + 4 = ${formatHex32(IF_ID.pcPlus4)}. Todo quedó guardado en el buffer IF/ID.`,
+        headline: `IMem leyó 4 bytes Big-Endian [${bytesDec}] desde ${fmtAddrDec(IF_ID.pc)} y formó la instrucción de 32 bits.`,
+        detail: `Al mismo tiempo, el sumador calculó PC + 4 = ${fmtAddrDec(IF_ID.pcPlus4)}. Todo quedó guardado en el buffer IF/ID.`,
         nextHint: 'Siguiente paso: ID decodificará estos 32 bits y leerá los registros.',
       };
     }
@@ -882,13 +912,13 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
       const extText =
         ID_EX.ctrl.ExtOp === 'NONE'
           ? 'No requiere extensión de inmediato.'
-          : `El extensor (${ID_EX.ctrl.ExtOp}) convirtió imm16=0x${f.imm16.toString(16).toUpperCase().padStart(4, '0')} en ${formatHex32(ID_EX.immExt)}.`;
+          : `El extensor (${ID_EX.ctrl.ExtOp}) convirtió los 16 bits (${fmtBits(f.imm16, 16)}) al valor decimal ${fmtSignedDec(ID_EX.immExt)}.`;
       return {
         title: 'Etapa 2 — ID (Decodificación y Lectura de Registros)',
         badge: 'ID completada · Cargó ID/EX',
         tone: 'id',
         headline: `Instrucción "${f.mnemonic}" (Formato ${f.format}). La Unidad de Control activó las 12 señales.`,
-        detail: `El Banco de Registros entregó DR1 (${REGISTER_NAMES[f.rs]} = ${formatHex32(ID_EX.A)}) y DR2 (${REGISTER_NAMES[f.rt]} = ${formatHex32(ID_EX.B)}). ${extText}`,
+        detail: `El Banco de Registros entregó DR1 (${REGISTER_NAMES[f.rs]} = ${fmtSignedDec(ID_EX.A)}) y DR2 (${REGISTER_NAMES[f.rt]} = ${fmtSignedDec(ID_EX.B)}). ${extText}`,
         nextHint: 'Siguiente paso: EX operará en la MIPSALU y decidirá el próximo PC.',
       };
     }
@@ -896,15 +926,15 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
       const opName = formatAluCtlName(EX_MEM.ctrl.ALUctl);
       const flowText =
         EX_MEM.ctrl.Jump === 1
-          ? `Jump activo → nextPC = ${formatHex32(EX_MEM.nextPC)}.`
+          ? `Jump activo → nextPC = ${fmtAddrDec(EX_MEM.nextPC)}.`
           : EX_MEM.ctrl.Branch === 1 || EX_MEM.ctrl.BranchNe === 1
-            ? `Salto condicional ${EX_MEM.branchTaken ? 'TOMADO' : 'NO tomado'} (Zero=${EX_MEM.zero ? 1 : 0}) → nextPC = ${formatHex32(EX_MEM.nextPC)}.`
-            : `Flujo secuencial → nextPC = ${formatHex32(EX_MEM.nextPC)}.`;
+            ? `Salto condicional ${EX_MEM.branchTaken ? 'TOMADO' : 'NO tomado'} (Zero=${EX_MEM.zero ? 1 : 0}) → nextPC = ${fmtAddrDec(EX_MEM.nextPC)}.`
+            : `Flujo secuencial → nextPC = ${fmtAddrDec(EX_MEM.nextPC)}.`;
       return {
         title: 'Etapa 3 — EX (Ejecución en ALU y Cálculo de Siguiente PC)',
         badge: 'EX completada · Cargó EX/MEM',
         tone: 'ex',
-        headline: `MIPSALU (${opName}) recibió A=${formatHex32(EX_MEM.aluOperandA)} y B=${formatHex32(EX_MEM.aluOperandB)} → ALUOut=${formatHex32(EX_MEM.aluResult)} (Zero=${EX_MEM.zero ? 1 : 0}).`,
+        headline: `MIPSALU (${opName}) recibió A=${fmtSignedDec(EX_MEM.aluOperandA)} y B=${fmtSignedDec(EX_MEM.aluOperandB)} → ALUOut=${fmtSignedDec(EX_MEM.aluResult)} (Zero=${EX_MEM.zero ? 1 : 0}).`,
         detail: `Mux RegDst eligió AW=${REGISTER_NAMES[EX_MEM.writeReg]}. ${flowText}`,
         nextHint: 'Siguiente paso: MEM leerá/escribirá DMem si la instrucción es lw o sw.',
       };
@@ -913,16 +943,16 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
       const { ctrl, aluResult, memReadData, writeBackData } = MEM_WB;
       const memText =
         ctrl.MemRead === 1
-          ? `lw leyó 4 bytes big-endian en DMem[${formatHex32(aluResult)}] → MDR = ${formatHex32(memReadData)}.`
+          ? `lw leyó 4 bytes Big-Endian en DMem[byte ${fmtUnsignedDec(aluResult)}] → MDR = ${fmtSignedDec(memReadData)}.`
           : ctrl.MemWrite === 1
-            ? `sw guardó DR2 = ${formatHex32(EX_MEM.writeData)} en DMem[${formatHex32(aluResult)}] (big-endian).`
-            : `Sin acceso a DMem (MemRead=0, MemWrite=0); ALUOut = ${formatHex32(aluResult)} pasa directo.`;
+            ? `sw guardó DR2 = ${fmtSignedDec(EX_MEM.writeData)} en DMem[byte ${fmtUnsignedDec(aluResult)}] (Big-Endian).`
+            : `Sin acceso a DMem (MemRead=0, MemWrite=0); ALUOut = ${fmtSignedDec(aluResult)} pasa directo.`;
       return {
         title: 'Etapa 4 — MEM (Acceso a Memoria de Datos)',
         badge: 'MEM completada · Cargó MEM/WB',
         tone: 'mem',
         headline: memText,
-        detail: `Mux MemToReg preparó el valor final Dw = ${formatHex32(writeBackData)} dentro del buffer MEM/WB.`,
+        detail: `Mux MemToReg preparó el valor final Dw = ${fmtSignedDec(writeBackData)} dentro del buffer MEM/WB.`,
         nextHint: 'Siguiente paso: WB guardará Dw en el Banco de Registros (si RegWrite=1) y actualizará PC.',
       };
     }
@@ -933,17 +963,25 @@ export function buildStageExplanation(snapshot: CpuSnapshot): StageExplanation {
           ? 'RegWrite=0, así que ningún registro del BR fue modificado.'
           : writeReg === 0
             ? 'El destino era $zero ($0), pero el hardware descarta escrituras en $0 para mantenerlo en 0.'
-            : `Se escribió ${formatHex32(writeBackData)} (${toInt32(writeBackData)}) en ${REGISTER_NAMES[writeReg]}.`;
+            : `Se escribió el valor decimal ${fmtSignedDec(writeBackData)} en ${REGISTER_NAMES[writeReg]}.`;
       return {
         title: 'Etapa 5 — WB (Escritura en Registros y Actualización de PC)',
         badge: 'WB completada · Instrucción finalizada',
         tone: 'wb',
-        headline: `${writeText} PC avanzó a ${formatHex32(nextPC)}.`,
+        headline: `${writeText} PC avanzó al ${fmtAddrDec(nextPC)}.`,
         detail: `Total ejecutado: ${snapshot.instructionsExecuted} instrucción(es) en ${snapshot.cycle} ciclos.`,
         nextHint: 'Siguiente paso: IF buscará la nueva instrucción en el PC actualizado.',
       };
     }
   }
+}
+
+function pendingSignal(name: string, stageHint: string): InspectorPortSignal {
+  return {
+    name,
+    binary: 'En espera',
+    decimalMeaning: `Se activa en etapa ${stageHint}`,
+  };
 }
 
 export function getBlockInspectorInfo(
@@ -967,13 +1005,29 @@ export function getBlockInspectorInfo(
         stageTag: 'IF / WB',
         bitRanges: ['PC[31:0] (32 bits, múltiplo de 4)'],
         beginnerSummary:
-          'Es como el marcador de página del procesador: guarda la dirección exacta de la instrucción que toca leer en Memoria de Instrucciones. Se actualiza al cerrar la etapa WB.',
+          'Es como el marcador de página del procesador: guarda la dirección exacta del byte donde empieza la instrucción que toca leer. Se actualiza al cerrar la etapa WB.',
+        inputs: [
+          view.nextPC !== null
+            ? {
+                name: 'nextPC (desde WB)',
+                binary: fmtWordBin32(view.nextPC),
+                decimalMeaning: `Dirección ${fmtAddrDec(view.nextPC)}`,
+              }
+            : pendingSignal('nextPC', 'EX / WB'),
+        ],
+        outputs: [
+          {
+            name: 'PC[31:0] actual',
+            binary: fmtWordBin32(view.pc),
+            decimalMeaning: `Dirección ${fmtAddrDec(view.pc)}`,
+          },
+        ],
         liveValues: [
-          { label: 'PC actual', value: formatHex32(view.pc) },
-          { label: 'nextPC entrante', value: view.nextPC !== null ? formatHex32(view.nextPC) : '—' },
-          { label: 'Actualizado en WB', value: view.pcUpdatedInWB ? 'Sí' : 'No (en curso)' },
+          { label: 'PC actual', value: fmtAddrDec(view.pc) },
+          { label: 'nextPC entrante', value: view.nextPC !== null ? fmtAddrDec(view.nextPC) : '—' },
         ],
       };
+
     case 'IMEM':
       return {
         id: blockId,
@@ -981,18 +1035,29 @@ export function getBlockInspectorInfo(
         stageTag: 'IF',
         bitRanges: ['Dirección: PC[31:0]', 'Salida: 4 × 8 bits (mem[PC..PC+3])'],
         beginnerSummary:
-          'Almacena el programa ensamblado byte por byte. Cada dirección contiene 1 byte (8 bits), por eso se leen 4 direcciones seguidas para obtener una instrucción.',
-        liveValues: [
-          { label: 'Dirección PC', value: formatHex32(view.instructionPc) },
-          { label: 'Tamaño cargado', value: `${snapshot.instructionMemory.length} bytes` },
+          'Almacena el programa ensamblado byte por byte. Cada dirección guarda 8 bits, por eso se leen 4 direcciones seguidas para obtener una instrucción completa.',
+        inputs: [
           {
-            label: 'Bytes leídos',
-            value: view.bigEndianBytes
-              ? view.bigEndianBytes.map(formatHexByte).join(' ')
-              : 'Fuera de rango',
+            name: 'Dirección PC',
+            binary: fmtWordBin32(view.instructionPc),
+            decimalMeaning: `Leer desde ${fmtAddrDec(view.instructionPc)}`,
           },
         ],
+        outputs: [
+          view.bigEndianBytes
+            ? {
+                name: '4 bytes [b0, b1, b2, b3]',
+                binary: view.bigEndianBytes.map(fmtByteBin).join(' '),
+                decimalMeaning: `Bytes decimales: [${view.bigEndianBytes.map(fmtByteDec).join(', ')}]`,
+              }
+            : pendingSignal('mem[PC..PC+3]', 'IF'),
+        ],
+        liveValues: [
+          { label: 'Dirección PC', value: fmtAddrDec(view.instructionPc) },
+          { label: 'Tamaño cargado', value: `${snapshot.instructionMemory.length} bytes` },
+        ],
       };
+
     case 'BIG_ENDIAN':
       return {
         id: blockId,
@@ -1000,17 +1065,33 @@ export function getBlockInspectorInfo(
         stageTag: 'IF (obligatorio antes de ID)',
         bitRanges: ['b0=mem[PC] → [31:24]', 'b1 → [23:16]', 'b2 → [15:8]', 'b3=mem[PC+3] → [7:0]'],
         beginnerSummary:
-          'En Big-Endian el byte más significativo (b0) llega primero en la dirección menor (PC). Este bloque reúne los 4 bytes sueltos en la palabra IR de 32 bits antes de decodificar.',
+          'En Big-Endian el byte más significativo (b0) llega primero en la dirección menor (PC). Este bloque une los 4 bytes de 8 bits en la palabra de 32 bits antes de decodificar.',
+        inputs: view.bigEndianBytes
+          ? view.bigEndianBytes.map((b, i) => ({
+              name: `Byte +${i} (mem[PC+${i}])`,
+              binary: fmtByteBin(b),
+              decimalMeaning: `Byte sin signo: ${fmtByteDec(b)}`,
+            }))
+          : [pendingSignal('4 bytes [b0..b3]', 'IF')],
+        outputs: [
+          view.irWord !== null
+            ? {
+                name: 'IR[31:0] reunido',
+                binary: fmtWordBin32(view.irWord),
+                decimalMeaning: `Palabra 32b sin signo: ${fmtUnsignedDec(view.irWord)}`,
+              }
+            : pendingSignal('IR[31:0]', 'IF'),
+        ],
         liveValues: [
           {
             label: '[b0, b1, b2, b3]',
             value: view.bigEndianBytes
-              ? `[${view.bigEndianBytes.map(formatHexByte).join(', ')}]`
+              ? `[${view.bigEndianBytes.map(fmtByteDec).join(', ')}]`
               : '—',
           },
-          { label: 'IR (32 bits)', value: view.irWord !== null ? formatHex32(view.irWord) : '—' },
         ],
       };
+
     case 'PC_PLUS_4':
       return {
         id: blockId,
@@ -1018,12 +1099,34 @@ export function getBlockInspectorInfo(
         stageTag: 'IF',
         bitRanges: ['Entrada A: PC[31:0]', 'Entrada B: 4', 'Salida: PC+4[31:0]'],
         beginnerSummary:
-          'Como cada instrucción ocupa 4 bytes en memoria, este sumador calcula automáticamente la dirección de la instrucción siguiente (PC + 4).',
+          'Como cada instrucción ocupa 4 bytes en memoria, este sumador calcula automáticamente la dirección de la siguiente instrucción secuencial (PC + 4).',
+        inputs: [
+          {
+            name: 'PC[31:0]',
+            binary: fmtWordBin32(view.instructionPc),
+            decimalMeaning: fmtAddrDec(view.instructionPc),
+          },
+          {
+            name: 'Constante +4',
+            binary: fmtWordBin32(4),
+            decimalMeaning: 'Decimal: 4 bytes',
+          },
+        ],
+        outputs: [
+          ifIdValid
+            ? {
+                name: 'PC + 4',
+                binary: fmtWordBin32(view.pcPlus4),
+                decimalMeaning: `Siguiente secuencia: ${fmtAddrDec(view.pcPlus4)}`,
+              }
+            : pendingSignal('PC + 4', 'IF'),
+        ],
         liveValues: [
-          { label: 'PC entrada', value: formatHex32(view.instructionPc) },
-          { label: 'PC + 4', value: formatHex32(view.pcPlus4) },
+          { label: 'PC entrada', value: fmtAddrDec(view.instructionPc) },
+          { label: 'PC + 4', value: ifIdValid ? fmtAddrDec(view.pcPlus4) : '—' },
         ],
       };
+
     case 'IF_ID':
       return {
         id: blockId,
@@ -1031,13 +1134,33 @@ export function getBlockInspectorInfo(
         stageTag: 'Se carga al final de IF',
         bitRanges: ['pc[31:0]', 'pcPlus4[31:0]', 'bytes[4×8]', 'instruction[31:0]'],
         beginnerSummary:
-          'Registro intermedio que congela la instrucción recién leída y su PC+4 para que la etapa ID pueda analizarlos en el siguiente ciclo.',
-        liveValues: [
-          { label: 'Estado', value: ifIdValid ? 'Válido' : 'Vacío' },
-          { label: 'IR', value: ifIdValid ? formatHex32(IF_ID.instruction) : '—' },
-          { label: 'PC+4', value: ifIdValid ? formatHex32(IF_ID.pcPlus4) : '—' },
-        ],
+          'Memoria temporal que congela los 32 bits recién leídos y su PC+4 al terminar IF para que la etapa ID pueda analizarlos.',
+        inputs: ifIdValid
+          ? [
+              {
+                name: '4 bytes reunidos',
+                binary: IF_ID.bytes.map(fmtByteBin).join(' '),
+                decimalMeaning: `Bytes: [${IF_ID.bytes.map(fmtByteDec).join(', ')}]`,
+              },
+            ]
+          : [pendingSignal('IR[31:0] y PC+4', 'IF')],
+        outputs: ifIdValid
+          ? [
+              {
+                name: 'instruction (IR)',
+                binary: fmtWordBin32(IF_ID.instruction),
+                decimalMeaning: `Instrucción en ${fmtAddrDec(IF_ID.pc)}`,
+              },
+              {
+                name: 'pcPlus4',
+                binary: fmtWordBin32(IF_ID.pcPlus4),
+                decimalMeaning: fmtAddrDec(IF_ID.pcPlus4),
+              },
+            ]
+          : [pendingSignal('Salida hacia ID', 'IF')],
+        liveValues: [{ label: 'Estado', value: ifIdValid ? 'Válido' : 'Vacío' }],
       };
+
     case 'FIELDS':
       return {
         id: blockId,
@@ -1054,16 +1177,56 @@ export function getBlockInspectorInfo(
           '[25:0] index (26b)',
         ],
         beginnerSummary:
-          'Separa los 32 bits de la instrucción en subgrupos fijos de bits: qué operación hacer (opcode/funct), qué registros usar (rs/rt/rd) y qué constante o dirección trae (imm16/index).',
-        liveValues: view.slices
+          'Parte la instrucción de 32 bits en grupos de bits: qué operación hacer (opcode/funct), qué registros usar (rs/rt/rd) y qué constante trae (imm16/index).',
+        inputs: ifIdValid
           ? [
-              { label: 'opcode [31:26]', value: `0x${view.slices.opcode.toString(16).toUpperCase().padStart(2, '0')}` },
-              { label: 'rs [25:21] / rt [20:16]', value: `${registerLabel(view.slices.rs)} / ${registerLabel(view.slices.rt)}` },
-              { label: 'rd [15:11] / funct [5:0]', value: `${registerLabel(view.slices.rd)} / 0x${view.slices.funct.toString(16).toUpperCase().padStart(2, '0')}` },
-              { label: 'imm16 [15:0]', value: `0x${view.slices.imm16.toString(16).toUpperCase().padStart(4, '0')}` },
+              {
+                name: 'IR[31:0] (desde IF/ID)',
+                binary: fmtWordBin32(IF_ID.instruction),
+                decimalMeaning: `Palabra completa de 32 bits (${fmtUnsignedDec(IF_ID.instruction)})`,
+              },
             ]
-          : [{ label: 'IR', value: 'Pendiente de IF' }],
+          : [pendingSignal('IR[31:0]', 'IF')],
+        outputs: idExValid && f
+          ? [
+              {
+                name: 'opcode [31:26]',
+                binary: fmtBits(f.opcode, 6),
+                decimalMeaning: `Decimal ${f.opcode} → ${f.mnemonic} (Tipo ${f.format})`,
+              },
+              {
+                name: 'rs [25:21] / rt [20:16]',
+                binary: `${fmtBits(f.rs, 5)} / ${fmtBits(f.rt, 5)}`,
+                decimalMeaning: `${registerLabel(f.rs)} / ${registerLabel(f.rt)}`,
+              },
+              ...(f.format === 'R'
+                ? [
+                    {
+                      name: 'rd [15:11] / funct [5:0]',
+                      binary: `${fmtBits(f.rd, 5)} / ${fmtBits(f.funct, 6)}`,
+                      decimalMeaning: `${registerLabel(f.rd)} / funct = ${f.funct}`,
+                    },
+                  ]
+                : f.format === 'J'
+                  ? [
+                      {
+                        name: 'index [25:0]',
+                        binary: fmtBits(f.jumpIndex, 26),
+                        decimalMeaning: `Índice palabra ${f.jumpIndex} (byte ${f.jumpIndex * 4})`,
+                      },
+                    ]
+                  : [
+                      {
+                        name: 'imm16 [15:0]',
+                        binary: fmtBits(f.imm16, 16),
+                        decimalMeaning: `Con signo: ${f.immSigned} (sin signo: ${f.imm16})`,
+                      },
+                    ]),
+            ]
+          : [pendingSignal('Campos decodificados', 'ID')],
+        liveValues: [{ label: 'Formato', value: f ? `${f.mnemonic} (${f.format})` : 'En espera' }],
       };
+
     case 'CONTROL':
       return {
         id: blockId,
@@ -1071,107 +1234,266 @@ export function getBlockInspectorInfo(
         stageTag: 'ID',
         bitRanges: ['Entradas: opcode[31:26], funct[5:0]', 'Salidas: 12 señales de control'],
         beginnerSummary:
-          'Es el director de orquesta: lee el código de la instrucción y enciende o apaga las 12 señales que indican a multiplexores, ALU, memoria y registros qué deben hacer.',
-        liveValues: view.controlsValid && view.ctrl
+          'Lee el código binario de la instrucción y activa o desactiva las 12 señales que le indican a los multiplexores, ALU, memoria y registros qué hacer.',
+        inputs: idExValid && f
           ? [
-              { label: 'Instrucción', value: `${view.mnemonic} (Tipo ${view.format})` },
-              { label: 'RegWrite / MemRead / MemWrite', value: `${view.ctrl.RegWrite} / ${view.ctrl.MemRead} / ${view.ctrl.MemWrite}` },
-              { label: 'RegDst / ALUSrc / MemToReg', value: `${view.ctrl.RegDst} / ${view.ctrl.ALUSrc} / ${view.ctrl.MemToReg}` },
-              { label: 'Branch / BranchNe / Jump', value: `${view.ctrl.Branch} / ${view.ctrl.BranchNe} / ${view.ctrl.Jump}` },
+              {
+                name: 'opcode [31:26]',
+                binary: fmtBits(f.opcode, 6),
+                decimalMeaning: `Decimal ${f.opcode} (${f.mnemonic})`,
+              },
+              ...(f.format === 'R'
+                ? [
+                    {
+                      name: 'funct [5:0]',
+                      binary: fmtBits(f.funct, 6),
+                      decimalMeaning: `Decimal ${f.funct} (${f.mnemonic})`,
+                    },
+                  ]
+                : []),
             ]
-          : [{ label: 'Estado', value: 'Pendiente de etapa ID' }],
+          : [pendingSignal('opcode / funct', 'ID')],
+        outputs: view.controlsValid && view.ctrl
+          ? [
+              {
+                name: 'RegWrite / MemRead / MemWrite',
+                binary: `${view.ctrl.RegWrite} / ${view.ctrl.MemRead} / ${view.ctrl.MemWrite}`,
+                decimalMeaning: `BR=${view.ctrl.RegWrite === 1 ? 'Escribe' : 'No'}, LeerMem=${view.ctrl.MemRead}, EscribirMem=${view.ctrl.MemWrite}`,
+              },
+              {
+                name: 'RegDst / ALUSrc / MemToReg',
+                binary: `${view.ctrl.RegDst} / ${view.ctrl.ALUSrc} / ${view.ctrl.MemToReg}`,
+                decimalMeaning: `Destino=${view.ctrl.RegDst === 1 ? 'rd' : 'rt'}, B=${view.ctrl.ALUSrc === 1 ? 'Imm' : 'DR2'}, Dw=${view.ctrl.MemToReg === 1 ? 'Mem' : 'ALU'}`,
+              },
+              {
+                name: 'Branch / BranchNe / Jump / ALUOp',
+                binary: `${view.ctrl.Branch} / ${view.ctrl.BranchNe} / ${view.ctrl.Jump} / ${formatAluOpBits(view.ctrl.ALUOp)}`,
+                decimalMeaning: `ALUOp=${formatAluOpBits(view.ctrl.ALUOp)} (${formatAluCtlName(view.ctrl.ALUctl)})`,
+              },
+            ]
+          : [pendingSignal('12 señales de control', 'ID')],
+        liveValues: [{ label: 'Instrucción', value: f ? `${f.mnemonic} (Tipo ${f.format})` : '—' }],
       };
+
     case 'BR':
       return {
         id: blockId,
         title: 'Banco de Registros (BR — 32 × 32 bits)',
         stageTag: 'Lectura en ID · Escritura en WB',
-        bitRanges: [
-          'AR1[4:0] (rs)',
-          'AR2[4:0] (rt)',
-          'AW[4:0] (destino)',
-          'Dw[31:0] (dato a escribir)',
-          'we (RegWrite, 1b)',
-          'DR1[31:0], DR2[31:0]',
-        ],
+        bitRanges: ['AR1[4:0]', 'AR2[4:0]', 'AW[4:0]', 'Dw[31:0]', 'we (1b)', 'DR1, DR2'],
         beginnerSummary:
-          'Son 32 casillas ultra rápidas dentro de la CPU ($0 a $31). En ID entrega DR1 y DR2; en WB guarda Dw en AW si RegWrite=1 y AW≠$zero ($0 siempre vale 0).',
-        liveValues: [
-          { label: 'AR1 → DR1', value: `${registerLabel(view.ar1)} → ${view.dr1 !== null ? formatHex32(view.dr1) : '—'}` },
-          { label: 'AR2 → DR2', value: `${registerLabel(view.ar2)} → ${view.dr2 !== null ? formatHex32(view.dr2) : '—'}` },
-          { label: 'AW / Dw / we', value: `${registerLabel(view.aw)} / ${view.dw !== null ? formatHex32(view.dw) : '—'} / we=${view.controlsValid && view.ctrl ? view.ctrl.RegWrite : '—'}` },
-          { label: 'Estado escritura', value: view.brStatusLabel },
+          'Contiene los 32 registros rápidos ($0 a $31). En ID entrega DR1 y DR2 en 32 bits; en WB guarda el resultado Dw en AW si RegWrite=1 y AW no es $zero.',
+        inputs: [
+          view.ar1 !== null
+            ? {
+                name: 'AR1 (registro rs)',
+                binary: fmtBits(view.ar1, 5),
+                decimalMeaning: `Lee registro ${registerLabel(view.ar1)}`,
+              }
+            : pendingSignal('AR1', 'ID'),
+          view.ar2 !== null
+            ? {
+                name: 'AR2 (registro rt)',
+                binary: fmtBits(view.ar2, 5),
+                decimalMeaning: `Lee registro ${registerLabel(view.ar2)}`,
+              }
+            : pendingSignal('AR2', 'ID'),
+          view.aw !== null && view.dw !== null
+            ? {
+                name: 'AW / Dw / we (en WB)',
+                binary: `${fmtBits(view.aw, 5)} / ${fmtWordBin32(view.dw)} / ${view.ctrl?.RegWrite ?? 0}`,
+                decimalMeaning: `${view.brStatusLabel}: ${fmtSignedDec(view.dw)}`,
+              }
+            : pendingSignal('AW / Dw (escritura)', 'MEM / WB'),
         ],
+        outputs:
+          view.dr1 !== null && view.dr2 !== null
+            ? [
+                {
+                  name: 'DR1 (valor de rs)',
+                  binary: fmtWordBin32(view.dr1),
+                  decimalMeaning: `Decimal: ${fmtSignedDec(view.dr1)}`,
+                },
+                {
+                  name: 'DR2 (valor de rt)',
+                  binary: fmtWordBin32(view.dr2),
+                  decimalMeaning: `Decimal: ${fmtSignedDec(view.dr2)}`,
+                },
+              ]
+            : [pendingSignal('DR1 / DR2', 'ID')],
+        liveValues: [{ label: 'Estado', value: view.brStatusLabel }],
       };
+
     case 'EXTENDER':
       return {
         id: blockId,
-        title: 'Extensor de Inmediato (Sign / Zero Ext)',
+        title: 'Extensor de Inmediato (16 bits → 32 bits)',
         stageTag: 'ID',
-        bitRanges: ['Entrada: imm16[15:0]', 'Control: ExtOp (SIGN|ZERO|NONE)', 'Salida: immExt[31:0]'],
+        bitRanges: ['Entrada: imm16[15:0]', 'Control: ExtOp', 'Salida: immExt[31:0]'],
         beginnerSummary:
-          'Convierte constantes de 16 bits en palabras de 32 bits para que la ALU pueda sumarlas o compararlas. Usa signo (copia bit 15) para números con signo, o ceros para ori.',
-        liveValues: [
-          { label: 'ExtOp', value: view.extOpLabel },
-          { label: 'imm16', value: f ? `0x${f.imm16.toString(16).toUpperCase().padStart(4, '0')} (${f.immSigned})` : '—' },
-          { label: 'immExt (32b)', value: view.immExt !== null ? formatHex32(view.immExt) : '—' },
-        ],
+          'Adapta constantes de 16 bits a palabras de 32 bits para la ALU. En SIGN copia el bit de signo [15] para conservar negativos; en ZERO rellena con ceros.',
+        inputs: idExValid && f
+          ? [
+              {
+                name: 'imm16 [15:0]',
+                binary: fmtBits(f.imm16, 16),
+                decimalMeaning:
+                  view.extOpLabel === 'ZERO'
+                    ? `Sin signo: ${f.imm16} (ExtOp=ZERO)`
+                    : `Con signo: ${f.immSigned} (ExtOp=${view.extOpLabel})`,
+              },
+            ]
+          : [pendingSignal('imm16 [15:0]', 'ID')],
+        outputs: view.immExt !== null
+          ? [
+              {
+                name: 'immExt [31:0]',
+                binary: fmtWordBin32(view.immExt),
+                decimalMeaning:
+                  view.extOpLabel === 'ZERO'
+                    ? `Decimal sin signo: ${fmtUnsignedDec(view.immExt)}`
+                    : `Decimal con signo: ${fmtSignedDec(view.immExt)}`,
+              },
+            ]
+          : [pendingSignal('immExt [31:0]', 'ID')],
+        liveValues: [{ label: 'ExtOp', value: view.extOpLabel }],
       };
+
     case 'ID_EX':
       return {
         id: blockId,
         title: 'Buffer Intermedio ID/EX',
         stageTag: 'Se carga al final de ID',
-        bitRanges: ['pc, pcPlus4', 'fields', 'A (DR1), B (DR2)', 'immExt', 'ctrl (12 señales)'],
+        bitRanges: ['A (DR1)', 'B (DR2)', 'immExt', 'ctrl (12 señales)'],
         beginnerSummary:
-          'Guarda los operandos leídos del Banco de Registros, el inmediato extendido y todas las señales de control listas para usarse en EX, MEM y WB.',
-        liveValues: [
-          { label: 'Estado', value: idExValid ? 'Válido' : 'Vacío' },
-          { label: 'A / B', value: idExValid ? `${formatHex32(ID_EX.A)} / ${formatHex32(ID_EX.B)}` : '—' },
-          { label: 'immExt', value: idExValid ? formatHex32(ID_EX.immExt) : '—' },
-        ],
+          'Guarda los operandos A y B leídos del Banco de Registros, el inmediato extendido y las 12 señales para la etapa EX.',
+        inputs: idExValid
+          ? [
+              {
+                name: 'A (DR1) / B (DR2)',
+                binary: `${fmtWordBin32(ID_EX.A)}`,
+                decimalMeaning: `A = ${fmtSignedDec(ID_EX.A)}, B = ${fmtSignedDec(ID_EX.B)}`,
+              },
+            ]
+          : [pendingSignal('Operandos y control', 'ID')],
+        outputs: idExValid
+          ? [
+              {
+                name: 'Salida hacia EX (A, B, immExt)',
+                binary: fmtWordBin32(ID_EX.immExt),
+                decimalMeaning: `A=${fmtSignedDec(ID_EX.A)}, B=${fmtSignedDec(ID_EX.B)}, immExt=${fmtSignedDec(ID_EX.immExt)}`,
+              },
+            ]
+          : [pendingSignal('Hacia etapa EX', 'ID')],
+        liveValues: [{ label: 'Estado', value: idExValid ? 'Válido' : 'Vacío' }],
       };
+
     case 'MUX_REGDST':
       return {
         id: blockId,
-        title: 'Mux RegDst (Selector de Registro Destino AW)',
+        title: 'Mux RegDst (Elige Registro Destino AW)',
         stageTag: 'EX',
-        bitRanges: ['0: rt[20:16]', '1: rd[15:11]', 'Selector: RegDst (1b)', 'Salida: AW[4:0]'],
+        bitRanges: ['0: rt[20:16]', '1: rd[15:11]', 'Selector: RegDst (1b)'],
         beginnerSummary:
-          'Elige en qué campo viene escrito el registro destino: en instrucciones tipo I viene en rt (0), mientras que en tipo R viene en rd (1).',
-        liveValues: [
-          { label: 'Selector RegDst', value: view.muxRegDstSel !== null ? String(view.muxRegDstSel) : '—' },
-          { label: '0=rt / 1=rd', value: f ? `${registerLabel(f.rt)} / ${registerLabel(f.rd)}` : '—' },
-          { label: 'Salida AW', value: registerLabel(view.aw) },
-        ],
+          'Elige qué campo trae el número del registro destino: en instrucciones tipo I viene en rt (selector 0); en tipo R viene en rd (selector 1).',
+        inputs: idExValid && f
+          ? [
+              {
+                name: 'Entrada 0 (rt)',
+                binary: fmtBits(f.rt, 5),
+                decimalMeaning: registerLabel(f.rt),
+              },
+              {
+                name: 'Entrada 1 (rd)',
+                binary: fmtBits(f.rd, 5),
+                decimalMeaning: registerLabel(f.rd),
+              },
+            ]
+          : [pendingSignal('rt / rd', 'ID / EX')],
+        outputs: exMemValid && view.aw !== null
+          ? [
+              {
+                name: `Salida AW (sel=${view.muxRegDstSel})`,
+                binary: fmtBits(view.aw, 5),
+                decimalMeaning: `Registro destino: ${registerLabel(view.aw)}`,
+              },
+            ]
+          : [pendingSignal('AW [4:0]', 'EX')],
+        liveValues: [{ label: 'Selector RegDst', value: view.muxRegDstSel !== null ? String(view.muxRegDstSel) : '—' }],
       };
+
     case 'MUX_ALUSRC':
       return {
         id: blockId,
-        title: 'Mux ALUSrc (Selector del Operando B)',
+        title: 'Mux ALUSrc (Elige Operando B de la ALU)',
         stageTag: 'EX',
-        bitRanges: ['0: DR2 (B[31:0])', '1: immExt[31:0]', 'Selector: ALUSrc (1b)', 'Salida: ALU.B[31:0]'],
+        bitRanges: ['0: B (DR2)', '1: immExt[31:0]', 'Selector: ALUSrc (1b)'],
         beginnerSummary:
-          'Decide si el segundo número que entra a la ALU proviene de un registro (0, como en add o beq) o de un inmediato de la instrucción (1, como en addi, lw, sw).',
-        liveValues: [
-          { label: 'Selector ALUSrc', value: view.muxALUSrcSel !== null ? String(view.muxALUSrcSel) : '—' },
-          { label: 'Salida ALU.B', value: view.aluB !== null ? formatHex32(view.aluB) : '—' },
-        ],
+          'Decide si el segundo operando que entra a la ALU viene de un registro (0, como add/beq) o de la constante extendida (1, como addi/lw/sw).',
+        inputs: idExValid
+          ? [
+              {
+                name: 'Entrada 0 (DR2)',
+                binary: fmtWordBin32(ID_EX.B),
+                decimalMeaning: `Decimal: ${fmtSignedDec(ID_EX.B)}`,
+              },
+              {
+                name: 'Entrada 1 (immExt)',
+                binary: fmtWordBin32(ID_EX.immExt),
+                decimalMeaning: `Decimal: ${fmtSignedDec(ID_EX.immExt)}`,
+              },
+            ]
+          : [pendingSignal('DR2 / immExt', 'ID / EX')],
+        outputs: view.aluB !== null
+          ? [
+              {
+                name: `Salida ALU.B (sel=${view.muxALUSrcSel})`,
+                binary: fmtWordBin32(view.aluB),
+                decimalMeaning: `Entra a ALU.B = ${fmtSignedDec(view.aluB)}`,
+              },
+            ]
+          : [pendingSignal('ALU.B [31:0]', 'EX')],
+        liveValues: [{ label: 'Selector ALUSrc', value: view.muxALUSrcSel !== null ? String(view.muxALUSrcSel) : '—' }],
       };
+
     case 'ALU_CONTROL':
       return {
         id: blockId,
-        title: 'ALU Control (Decodificador de ALU)',
+        title: 'ALU Control',
         stageTag: 'EX',
-        bitRanges: ['Entradas: ALUOp[1:0], funct[5:0]', 'Salida: ALUctl[3:0] (4 bits)'],
+        bitRanges: ['Entradas: ALUOp[1:0], funct[5:0]', 'Salida: ALUctl[3:0]'],
         beginnerSummary:
-          'Traduce la orden general ALUOp y el campo funct (en tipo R) en el código exacto de 4 bits que entiende la MIPSALU (AND, OR, ADD, SUB, SLT).',
-        liveValues: [
-          { label: 'ALUOp', value: view.controlsValid && view.ctrl ? formatAluOpBits(view.ctrl.ALUOp) : '—' },
-          { label: 'funct [5:0]', value: f ? `0x${f.funct.toString(16).toUpperCase().padStart(2, '0')}` : '—' },
-          { label: 'ALUctl', value: view.aluCtlLabel },
-        ],
+          'Traduce ALUOp (2 bits) y el campo funct (en tipo R) al código binario de 4 bits que le indica a MIPSALU qué operación realizar.',
+        inputs: idExValid && f && view.ctrl
+          ? [
+              {
+                name: 'ALUOp [1:0]',
+                binary: formatAluOpBits(view.ctrl.ALUOp),
+                decimalMeaning: formatAluOpMeaning(view.ctrl.ALUOp),
+              },
+              ...(f.format === 'R'
+                ? [
+                    {
+                      name: 'funct [5:0]',
+                      binary: fmtBits(f.funct, 6),
+                      decimalMeaning: `Decimal ${f.funct} (${f.mnemonic})`,
+                    },
+                  ]
+                : []),
+            ]
+          : [pendingSignal('ALUOp / funct', 'ID / EX')],
+        outputs: exMemValid && view.ctrl
+          ? [
+              {
+                name: 'ALUctl [3:0]',
+                binary: formatAluCtlBits(view.ctrl.ALUctl),
+                decimalMeaning: `Operación: ${formatAluCtlName(view.ctrl.ALUctl)} (decimal ${view.ctrl.ALUctl})`,
+              },
+            ]
+          : [pendingSignal('ALUctl [3:0]', 'EX')],
+        liveValues: [{ label: 'ALUctl', value: view.aluCtlLabel }],
       };
+
     case 'MIPSALU':
       return {
         id: blockId,
@@ -1179,120 +1501,313 @@ export function getBlockInspectorInfo(
         stageTag: 'EX',
         bitRanges: ['A[31:0]', 'B[31:0]', 'ALUctl[3:0]', 'ALUOut[31:0]', 'Zero (1b)'],
         beginnerSummary:
-          'Es la calculadora del procesador: suma, resta, compara (slt) o hace AND/OR con A y B. También calcula direcciones de memoria para lw/sw y compara registros en beq/bne.',
+          'Realiza el cálculo matemático o lógico sobre A y B. También calcula direcciones de memoria (para lw/sw) y verifica igualdad restando (para beq/bne).',
+        inputs:
+          view.aluA !== null && view.aluB !== null && view.ctrl
+            ? [
+                {
+                  name: 'Operando A',
+                  binary: fmtWordBin32(view.aluA),
+                  decimalMeaning: `Decimal: ${fmtSignedDec(view.aluA)}`,
+                },
+                {
+                  name: 'Operando B',
+                  binary: fmtWordBin32(view.aluB),
+                  decimalMeaning: `Decimal: ${fmtSignedDec(view.aluB)}`,
+                },
+                {
+                  name: 'ALUctl',
+                  binary: formatAluCtlBits(view.ctrl.ALUctl),
+                  decimalMeaning: `Operación ${formatAluCtlName(view.ctrl.ALUctl)}`,
+                },
+              ]
+            : [pendingSignal('A, B y ALUctl', 'EX')],
+        outputs:
+          view.aluOut !== null && view.zeroFlag !== null
+            ? [
+                {
+                  name: 'ALUOut [31:0]',
+                  binary: fmtWordBin32(view.aluOut),
+                  decimalMeaning: `Resultado decimal: ${fmtSignedDec(view.aluOut)}`,
+                },
+                {
+                  name: 'Bandera Zero',
+                  binary: view.zeroFlag ? '1' : '0',
+                  decimalMeaning: view.zeroFlag ? '1 → Resultado fue 0 (iguales)' : '0 → Resultado distinto de 0',
+                },
+              ]
+            : [pendingSignal('ALUOut y Zero', 'EX')],
         liveValues: [
-          { label: 'A / B', value: view.aluA !== null && view.aluB !== null ? `${formatHex32(view.aluA)} / ${formatHex32(view.aluB)}` : '—' },
-          { label: 'ALUOut', value: view.aluOut !== null ? formatHex32(view.aluOut) : '—' },
-          { label: 'Zero', value: view.zeroFlag !== null ? (view.zeroFlag ? '1 (true)' : '0 (false)') : '—' },
+          { label: 'ALUOut', value: view.aluOut !== null ? fmtSignedDec(view.aluOut) : '—' },
         ],
       };
+
     case 'SHIFT_BRANCH':
       return {
         id: blockId,
         title: 'Shift Left 2 (Desplazamiento de Salto)',
         stageTag: 'EX',
-        bitRanges: ['Entrada: immExt[31:0]', 'Operación: << 2 (×4 bytes)', 'Salida: offset[31:0]'],
+        bitRanges: ['Entrada: immExt[31:0]', 'Operación: << 2 (×4 bytes)'],
         beginnerSummary:
-          'En MIPS el desplazamiento de beq/bne se mide en palabras de 4 bytes. Multiplicar por 4 (desplazar 2 bits a la izquierda) lo convierte en dirección de bytes.',
-        liveValues: [
-          { label: 'immSigned', value: f ? String(f.immSigned) : '—' },
-          { label: 'Desplazamiento (bytes)', value: f ? `${f.immSigned * 4}` : '—' },
-        ],
+          'Multiplica por 4 el desplazamiento (desplaza 2 bits a la izquierda) para convertir palabras en direcciones de byte.',
+        inputs: idExValid && f
+          ? [
+              {
+                name: 'immExt [31:0]',
+                binary: fmtWordBin32(ID_EX.immExt),
+                decimalMeaning: `${f.immSigned} instrucciones`,
+              },
+            ]
+          : [pendingSignal('immExt', 'ID / EX')],
+        outputs: exMemValid && f
+          ? [
+              {
+                name: 'immExt << 2',
+                binary: fmtWordBin32((ID_EX.immExt << 2) >>> 0),
+                decimalMeaning: `${f.immSigned * 4} bytes de salto`,
+              },
+            ]
+          : [pendingSignal('Desplazamiento ×4', 'EX')],
+        liveValues: [{ label: 'Desplazamiento', value: f ? `${f.immSigned * 4} bytes` : '—' }],
       };
+
     case 'BRANCH_ADDER':
       return {
         id: blockId,
         title: 'Sumador de Dirección de Branch',
         stageTag: 'EX',
-        bitRanges: ['PC+4[31:0] + (immExt << 2)', 'Salida: branchTarget[31:0]'],
+        bitRanges: ['PC+4 + (immExt << 2)', 'Salida: branchTarget[31:0]'],
         beginnerSummary:
-          'Calcula a qué dirección saltaría el programa si se cumple la condición de beq o bne.',
+          'Suma PC+4 más el desplazamiento en bytes para obtener la dirección exacta adonde saltará beq o bne si se cumple la condición.',
+        inputs: exMemValid && f
+          ? [
+              {
+                name: 'PC + 4',
+                binary: fmtWordBin32(ID_EX.pcPlus4),
+                decimalMeaning: fmtAddrDec(ID_EX.pcPlus4),
+              },
+              {
+                name: 'Desplazamiento (×4)',
+                binary: fmtWordBin32((ID_EX.immExt << 2) >>> 0),
+                decimalMeaning: `${f.immSigned * 4} bytes`,
+              },
+            ]
+          : [pendingSignal('PC+4 y offset', 'EX')],
+        outputs: view.branchTarget !== null
+          ? [
+              {
+                name: 'branchTarget [31:0]',
+                binary: fmtWordBin32(view.branchTarget),
+                decimalMeaning: `Destino: ${fmtAddrDec(view.branchTarget)}`,
+              },
+            ]
+          : [pendingSignal('branchTarget', 'EX')],
         liveValues: [
-          { label: 'PC + 4', value: formatHex32(view.pcPlus4) },
-          { label: 'branchTarget', value: view.branchTarget !== null ? formatHex32(view.branchTarget) : '—' },
+          { label: 'branchTarget', value: view.branchTarget !== null ? fmtAddrDec(view.branchTarget) : '—' },
         ],
       };
+
     case 'BRANCH_LOGIC':
       return {
         id: blockId,
-        title: 'Compuerta de Decisión Branch (BEQ / BNE)',
+        title: 'Lógica de Salto Condicional (BEQ / BNE)',
         stageTag: 'EX',
         bitRanges: ['branchTaken = (Branch & Zero) | (BranchNe & !Zero)'],
         beginnerSummary:
-          'Combina las señales Branch (beq) y BranchNe (bne) con la bandera Zero de la ALU para decidir si el salto condicional se toma o no.',
-        liveValues: [
-          { label: 'Branch / BranchNe', value: view.controlsValid && view.ctrl ? `${view.ctrl.Branch} / ${view.ctrl.BranchNe}` : '—' },
-          { label: 'Zero', value: view.zeroFlag !== null ? (view.zeroFlag ? '1' : '0') : '—' },
-          { label: 'branchTaken', value: exMemValid ? (view.branchTaken ? '1 (Tomado)' : '0 (No tomado)') : '—' },
-        ],
+          'Combina la señal de control (Branch o BranchNe) con la bandera Zero de la ALU para decidir si el salto condicional se toma (1) o no (0).',
+        inputs: exMemValid && view.ctrl
+          ? [
+              {
+                name: 'Branch / BranchNe',
+                binary: `${view.ctrl.Branch} / ${view.ctrl.BranchNe}`,
+                decimalMeaning: view.ctrl.Branch === 1 ? 'beq activo' : view.ctrl.BranchNe === 1 ? 'bne activo' : 'No es salto cond.',
+              },
+              {
+                name: 'Zero (desde ALU)',
+                binary: EX_MEM.zero ? '1' : '0',
+                decimalMeaning: EX_MEM.zero ? 'Operandos iguales (Zero=1)' : 'Operandos distintos (Zero=0)',
+              },
+            ]
+          : [pendingSignal('Branch, BranchNe, Zero', 'EX')],
+        outputs: exMemValid
+          ? [
+              {
+                name: 'branchTaken',
+                binary: view.branchTaken ? '1' : '0',
+                decimalMeaning: view.branchTaken ? '1 → Salto TOMADO' : '0 → No salta (sigue PC+4)',
+              },
+            ]
+          : [pendingSignal('branchTaken', 'EX')],
+        liveValues: [{ label: 'branchTaken', value: exMemValid ? (view.branchTaken ? '1 (Sí)' : '0 (No)') : '—' }],
       };
+
     case 'MUX_PCSRC':
       return {
         id: blockId,
-        title: 'Mux PCSrc / Branch',
+        title: 'Mux PCSrc (PC+4 vs Branch)',
         stageTag: 'EX',
         bitRanges: ['0: PC+4', '1: branchTarget', 'Selector: branchTaken'],
         beginnerSummary:
-          'Elige entre avanzar secuencialmente (PC+4) o saltar a branchTarget si se cumplió beq/bne.',
-        liveValues: [
-          { label: 'Selector branchTaken', value: view.muxPCSrcSel !== null ? String(view.muxPCSrcSel) : '—' },
-          { label: 'Salida', value: exMemValid ? formatHex32(view.branchTaken ? EX_MEM.branchTarget : view.pcPlus4) : '—' },
-        ],
+          'Elige entre continuar a la siguiente instrucción (PC+4) o saltar a branchTarget si se cumplió beq/bne.',
+        inputs: exMemValid
+          ? [
+              {
+                name: 'Entrada 0 (PC + 4)',
+                binary: fmtWordBin32(ID_EX.pcPlus4),
+                decimalMeaning: fmtAddrDec(ID_EX.pcPlus4),
+              },
+              {
+                name: 'Entrada 1 (branchTarget)',
+                binary: fmtWordBin32(EX_MEM.branchTarget),
+                decimalMeaning: fmtAddrDec(EX_MEM.branchTarget),
+              },
+            ]
+          : [pendingSignal('PC+4 / branchTarget', 'EX')],
+        outputs: exMemValid
+          ? [
+              {
+                name: `Salida (sel=${view.muxPCSrcSel})`,
+                binary: fmtWordBin32(EX_MEM.branchTaken ? EX_MEM.branchTarget : ID_EX.pcPlus4),
+                decimalMeaning: fmtAddrDec(EX_MEM.branchTaken ? EX_MEM.branchTarget : ID_EX.pcPlus4),
+              },
+            ]
+          : [pendingSignal('Salida PCSrc', 'EX')],
+        liveValues: [{ label: 'Selector', value: view.muxPCSrcSel !== null ? String(view.muxPCSrcSel) : '—' }],
       };
+
     case 'JUMP_CONCAT':
       return {
         id: blockId,
-        title: 'Cálculo Jump Target (Shift << 2 + Concat)',
+        title: 'Cálculo Jump Target (j)',
         stageTag: 'EX',
-        bitRanges: ['(PC+4)[31:28] || (index[25:0] << 2)', 'Salida: jumpTarget[31:0]'],
+        bitRanges: ['(PC+4)[31:28] || (index[25:0] << 2)'],
         beginnerSummary:
-          'Para la instrucción j, desplaza 2 bits el índice de 26 bits y lo une con los 4 bits más altos de PC+4 para formar una dirección de 32 bits.',
+          'Para la instrucción j, desplaza 2 bits a la izquierda el índice de 26 bits (×4 bytes) y lo une con los 4 bits superiores de PC+4.',
+        inputs: idExValid && f
+          ? [
+              {
+                name: 'index [25:0]',
+                binary: fmtBits(f.jumpIndex, 26),
+                decimalMeaning: `Palabra ${f.jumpIndex} (×4 = ${fmtAddrDec(f.jumpIndex * 4)})`,
+              },
+            ]
+          : [pendingSignal('index [25:0]', 'ID / EX')],
+        outputs: view.jumpTarget !== null
+          ? [
+              {
+                name: 'jumpTarget [31:0]',
+                binary: fmtWordBin32(view.jumpTarget),
+                decimalMeaning: `Destino salto: ${fmtAddrDec(view.jumpTarget)}`,
+              },
+            ]
+          : [pendingSignal('jumpTarget', 'EX')],
         liveValues: [
-          { label: 'index [25:0]', value: view.slices ? `0x${view.slices.jumpIndex.toString(16).toUpperCase().padStart(7, '0')}` : '—' },
-          { label: 'jumpTarget', value: view.jumpTarget !== null ? formatHex32(view.jumpTarget) : '—' },
+          { label: 'jumpTarget', value: view.jumpTarget !== null ? fmtAddrDec(view.jumpTarget) : '—' },
         ],
       };
+
     case 'MUX_JUMP':
       return {
         id: blockId,
         title: 'Mux Jump (Selector Final de nextPC)',
         stageTag: 'EX',
-        bitRanges: ['0: salida Mux PCSrc', '1: jumpTarget', 'Selector: Jump (1b)', 'Salida: nextPC[31:0]'],
+        bitRanges: ['0: salida Mux PCSrc', '1: jumpTarget', 'Selector: Jump (1b)'],
         beginnerSummary:
-          'Decisión final del siguiente PC: si Jump=1 (instrucción j) toma jumpTarget; si no, conserva la salida del Mux de Branch.',
-        liveValues: [
-          { label: 'Selector Jump', value: view.muxJumpSel !== null ? String(view.muxJumpSel) : '—' },
-          { label: 'nextPC final', value: view.nextPC !== null ? formatHex32(view.nextPC) : '—' },
-        ],
+          'Decisión final del siguiente PC: si Jump=1 toma jumpTarget; de lo contrario mantiene el resultado de Mux PCSrc.',
+        inputs: exMemValid
+          ? [
+              {
+                name: 'Entrada 0 (Mux PCSrc)',
+                binary: fmtWordBin32(EX_MEM.branchTaken ? EX_MEM.branchTarget : ID_EX.pcPlus4),
+                decimalMeaning: fmtAddrDec(EX_MEM.branchTaken ? EX_MEM.branchTarget : ID_EX.pcPlus4),
+              },
+              {
+                name: 'Entrada 1 (jumpTarget)',
+                binary: fmtWordBin32(EX_MEM.jumpTarget),
+                decimalMeaning: fmtAddrDec(EX_MEM.jumpTarget),
+              },
+            ]
+          : [pendingSignal('PCSrc / jumpTarget', 'EX')],
+        outputs: view.nextPC !== null
+          ? [
+              {
+                name: `nextPC final (sel=${view.muxJumpSel})`,
+                binary: fmtWordBin32(view.nextPC),
+                decimalMeaning: `Próximo PC: ${fmtAddrDec(view.nextPC)}`,
+              },
+            ]
+          : [pendingSignal('nextPC', 'EX')],
+        liveValues: [{ label: 'nextPC', value: view.nextPC !== null ? fmtAddrDec(view.nextPC) : '—' }],
       };
+
     case 'EX_MEM':
       return {
         id: blockId,
         title: 'Buffer Intermedio EX/MEM',
         stageTag: 'Se carga al final de EX',
-        bitRanges: ['aluResult, zero', 'writeData (DR2)', 'writeReg (AW)', 'nextPC', 'ctrl'],
+        bitRanges: ['aluResult', 'zero', 'writeData (DR2)', 'writeReg (AW)', 'nextPC'],
         beginnerSummary:
-          'Conserva el resultado de la ALU (que puede ser un dato o una dirección de memoria), el registro destino y el nextPC calculado.',
-        liveValues: [
-          { label: 'Estado', value: exMemValid ? 'Válido' : 'Vacío' },
-          { label: 'ALUOut / Zero', value: exMemValid ? `${formatHex32(EX_MEM.aluResult)} / ${EX_MEM.zero ? 1 : 0}` : '—' },
-          { label: 'nextPC', value: exMemValid ? formatHex32(EX_MEM.nextPC) : '—' },
-        ],
+          'Conserva el resultado de la ALU, el registro destino y el próximo PC calculado al terminar la etapa EX.',
+        inputs: exMemValid
+          ? [
+              {
+                name: 'ALUOut / Zero',
+                binary: fmtWordBin32(EX_MEM.aluResult),
+                decimalMeaning: `Decimal: ${fmtSignedDec(EX_MEM.aluResult)} (Zero=${EX_MEM.zero ? 1 : 0})`,
+              },
+            ]
+          : [pendingSignal('Resultados de EX', 'EX')],
+        outputs: exMemValid
+          ? [
+              {
+                name: 'Hacia MEM (ALUOut / nextPC)',
+                binary: fmtWordBin32(EX_MEM.nextPC),
+                decimalMeaning: `ALUOut=${fmtSignedDec(EX_MEM.aluResult)}, nextPC=${fmtAddrDec(EX_MEM.nextPC)}`,
+              },
+            ]
+          : [pendingSignal('Hacia etapa MEM', 'EX')],
+        liveValues: [{ label: 'Estado', value: exMemValid ? 'Válido' : 'Vacío' }],
       };
+
     case 'DMEM':
       return {
         id: blockId,
         title: 'Memoria de Datos (DMem — Big-Endian)',
         stageTag: 'MEM',
-        bitRanges: ['Address: ALUOut[31:0]', 'WriteData: DR2[31:0]', 'MemRead, MemWrite', 'Salida: MDR[31:0]'],
+        bitRanges: ['Address: ALUOut[31:0]', 'WriteData: DR2[31:0]', 'Salida: MDR[31:0]'],
         beginnerSummary:
-          'Guarda los arreglos y variables del programa en orden big-endian (4 bytes por palabra). Solo trabaja en lw (MemRead=1) o sw (MemWrite=1); exige direcciones múltiplos de 4.',
-        liveValues: [
-          { label: 'Acción', value: view.dmemAction },
-          { label: 'Address (ALUOut)', value: exMemValid ? formatHex32(EX_MEM.aluResult) : '—' },
-          { label: 'WriteData / MDR', value: exMemValid ? `${formatHex32(EX_MEM.writeData)} / ${view.mdr !== null ? formatHex32(view.mdr) : '—'}` : '—' },
-        ],
+          'Almacena arreglos y variables del programa en Big-Endian (4 bytes por palabra). Solo actúa en lw (MemRead=1) o sw (MemWrite=1) sobre direcciones múltiplos de 4.',
+        inputs: exMemValid
+          ? [
+              {
+                name: 'Address (ALUOut)',
+                binary: fmtWordBin32(EX_MEM.aluResult),
+                decimalMeaning: fmtAddrDec(EX_MEM.aluResult),
+              },
+              {
+                name: 'WriteData (DR2)',
+                binary: fmtWordBin32(EX_MEM.writeData),
+                decimalMeaning: `Decimal: ${fmtSignedDec(EX_MEM.writeData)}`,
+              },
+            ]
+          : [pendingSignal('Address / WriteData', 'EX / MEM')],
+        outputs: memWbValid
+          ? [
+              {
+                name: `MDR (${view.dmemAction})`,
+                binary: fmtWordBin32(MEM_WB.memReadData),
+                decimalMeaning:
+                  view.mdr !== null
+                    ? `Leído de memoria: ${fmtSignedDec(view.mdr)}`
+                    : view.dmemAction === 'WRITE'
+                      ? `Escrito en DMem[${fmtUnsignedDec(EX_MEM.aluResult)}]`
+                      : 'Sin lectura (bypass)',
+              },
+            ]
+          : [pendingSignal('MDR (dato leído)', 'MEM')],
+        liveValues: [{ label: 'Acción', value: view.dmemAction }],
       };
+
     case 'MEM_WB':
       return {
         id: blockId,
@@ -1300,25 +1815,60 @@ export function getBlockInspectorInfo(
         stageTag: 'Se carga al final de MEM',
         bitRanges: ['memReadData (MDR)', 'aluResult', 'writeReg (AW)', 'writeBackData (Dw)', 'nextPC'],
         beginnerSummary:
-          'Guarda el valor final Dw listo para escribirse en el Banco de Registros y el nextPC que actualizará al Contador de Programa en WB.',
-        liveValues: [
-          { label: 'Estado', value: memWbValid ? 'Válido' : 'Vacío' },
-          { label: 'Dw (writeBackData)', value: memWbValid ? formatHex32(MEM_WB.writeBackData) : '—' },
-          { label: 'AW / nextPC', value: memWbValid ? `${registerLabel(MEM_WB.writeReg)} / ${formatHex32(MEM_WB.nextPC)}` : '—' },
-        ],
+          'Guarda el valor final Dw listo para escribirse en el Banco de Registros y el nextPC que actualizará al PC en WB.',
+        inputs: memWbValid
+          ? [
+              {
+                name: 'Dw (writeBackData)',
+                binary: fmtWordBin32(MEM_WB.writeBackData),
+                decimalMeaning: `Decimal: ${fmtSignedDec(MEM_WB.writeBackData)} → ${registerLabel(MEM_WB.writeReg)}`,
+              },
+            ]
+          : [pendingSignal('MDR / ALUOut', 'MEM')],
+        outputs: memWbValid
+          ? [
+              {
+                name: 'Hacia WB (Dw y nextPC)',
+                binary: fmtWordBin32(MEM_WB.nextPC),
+                decimalMeaning: `Dw=${fmtSignedDec(MEM_WB.writeBackData)}, nextPC=${fmtAddrDec(MEM_WB.nextPC)}`,
+              },
+            ]
+          : [pendingSignal('Hacia etapa WB', 'MEM')],
+        liveValues: [{ label: 'Estado', value: memWbValid ? 'Válido' : 'Vacío' }],
       };
+
     case 'MUX_MEMTOREG':
       return {
         id: blockId,
-        title: 'Mux MemToReg (Selector de Dato Dw)',
+        title: 'Mux MemToReg (Elige Dato Final Dw)',
         stageTag: 'MEM → WB',
-        bitRanges: ['0: ALUOut[31:0]', '1: MDR[31:0]', 'Selector: MemToReg (1b)', 'Salida: Dw[31:0]'],
+        bitRanges: ['0: ALUOut[31:0]', '1: MDR[31:0]', 'Selector: MemToReg (1b)'],
         beginnerSummary:
-          'Elige si el resultado que se escribirá en el Banco de Registros viene de la ALU (0, operaciones aritméticas) o de la Memoria de Datos (1, instrucción lw).',
-        liveValues: [
-          { label: 'Selector MemToReg', value: view.muxMemToRegSel !== null ? String(view.muxMemToRegSel) : '—' },
-          { label: 'Salida Dw', value: view.dw !== null ? formatHex32(view.dw) : '—' },
-        ],
+          'Elige si el dato final que se guardará en el Banco de Registros viene del cálculo de la ALU (0) o de la Memoria de Datos (1, en lw).',
+        inputs: memWbValid
+          ? [
+              {
+                name: 'Entrada 0 (ALUOut)',
+                binary: fmtWordBin32(MEM_WB.aluResult),
+                decimalMeaning: `Decimal: ${fmtSignedDec(MEM_WB.aluResult)}`,
+              },
+              {
+                name: 'Entrada 1 (MDR)',
+                binary: fmtWordBin32(MEM_WB.memReadData),
+                decimalMeaning: `Decimal: ${fmtSignedDec(MEM_WB.memReadData)}`,
+              },
+            ]
+          : [pendingSignal('ALUOut / MDR', 'MEM / WB')],
+        outputs: view.dw !== null
+          ? [
+              {
+                name: `Salida Dw (sel=${view.muxMemToRegSel})`,
+                binary: fmtWordBin32(view.dw),
+                decimalMeaning: `Valor final: ${fmtSignedDec(view.dw)}`,
+              },
+            ]
+          : [pendingSignal('Dw [31:0]', 'MEM / WB')],
+        liveValues: [{ label: 'Salida Dw', value: view.dw !== null ? fmtSignedDec(view.dw) : '—' }],
       };
   }
 }

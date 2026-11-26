@@ -1,13 +1,11 @@
 /**
  * Diagrama SVG interactivo del Datapath MIPS32 (Modalidad B — estilo MIPS 101).
- * Muestra en tiempo real PC, reunión Big-Endian de 4 bytes, campos de instrucción,
- * Unidad de Control, Banco de Registros (AR1/AR2/AW/Dw/we/DR1/DR2), Extensor,
- * ALU Control, MIPSALU (A/B/ALUOut/Zero), 5 Muxes, lógica de siguiente PC,
- * Memoria de Datos y los 4 buffers intermedios (IF/ID, ID/EX, EX/MEM, MEM/WB).
+ * Usa exclusivamente BINARIO y DECIMAL, muestra la progresión real etapa por etapa
+ * sin adelantar valores futuros y permite inspeccionar Entradas/Salidas por bloque.
  */
 import { useEffect, useState } from 'react';
 import type { CpuSnapshot, Stage } from '@core/types';
-import { REGISTER_NAMES, formatHex32, formatHexByte } from '@core/isa';
+import { REGISTER_NAMES } from '@core/isa';
 import {
   deriveDatapathView,
   getBlockInspectorInfo,
@@ -15,6 +13,14 @@ import {
   type DatapathViewModel,
   type DatapathWireId,
 } from '../utils/datapathModel';
+import {
+  fmtAddrDec,
+  fmtBits,
+  fmtByteBin,
+  fmtByteDec,
+  fmtSignedDec,
+  fmtUnsignedDec,
+} from '../utils/numberFormat';
 
 export interface DatapathSVGProps {
   snapshot: CpuSnapshot;
@@ -30,15 +36,15 @@ const STAGE_META: Record<Stage, { label: string; x: number; width: number; accen
   WB: { label: '5 · WB (Escritura)', x: 1428, width: 168, accent: '#30D158' },
 };
 
-function shortHex(val: number | null): string {
-  if (val === null) return '—';
-  return formatHex32(val);
+function fmtDecOrDash(val: number | null): string {
+  return val === null ? '—' : fmtSignedDec(val);
 }
 
-function wireStrokeColor(
-  wireId: DatapathWireId,
-  view: DatapathViewModel,
-): string {
+function fmtByteDecOrDash(val: number | null): string {
+  return val === null ? '—' : `byte ${fmtUnsignedDec(val)}`;
+}
+
+function wireStrokeColor(wireId: DatapathWireId, view: DatapathViewModel): string {
   if (view.hasError && view.activeWires[wireId]) return '#FF453A';
   if (!view.activeWires[wireId]) return 'rgba(255, 255, 255, 0.14)';
 
@@ -113,7 +119,7 @@ function WirePath({ id, d, view, hasArrow = true, pulse = true }: WirePathProps)
           d={d}
           fill="none"
           stroke="#FFFFFF"
-          strokeOpacity={0.7}
+          strokeOpacity={0.75}
           strokeWidth={2}
           strokeDasharray="6 12"
           strokeLinecap="round"
@@ -122,10 +128,29 @@ function WirePath({ id, d, view, hasArrow = true, pulse = true }: WirePathProps)
         />
       )}
       {isActive && pulse && (
-        <circle r={3.6} fill={color} className="dp-wire-pulse">
-          <animateMotion dur="1.45s" repeatCount="indefinite" path={d} />
+        <circle r={3.8} fill={color} className="dp-wire-pulse">
+          <animateMotion dur="1.35s" repeatCount="indefinite" path={d} />
         </circle>
       )}
+    </g>
+  );
+}
+
+interface WireBadgeProps {
+  x: number;
+  y: number;
+  text: string;
+  tone?: 'blue' | 'purple' | 'orange' | 'cyan' | 'green';
+}
+
+function WireBadge({ x, y, text, tone = 'blue' }: WireBadgeProps) {
+  const width = Math.max(66, text.length * 6.6 + 16);
+  return (
+    <g className={`dp-wire-badge dp-wire-badge--${tone}`} transform={`translate(${x}, ${y})`}>
+      <rect x={-width / 2} y={-11} width={width} height={22} rx={11} />
+      <text x={0} y={3.5} textAnchor="middle">
+        {text}
+      </text>
     </g>
   );
 }
@@ -150,12 +175,16 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
     ? getBlockInspectorInfo(inspectedBlockId, view, snapshot)
     : null;
 
-  const blockClass = (id: DatapathBlockId): string => {
+  const blockClass = (id: DatapathBlockId, stage?: Stage): string => {
     const classes = ['dp-block'];
     if (view.errorBlock === id) {
       classes.push('dp-block--error');
     } else if (view.activeBlocks[id]) {
       classes.push('dp-block--active');
+    } else if (stage && !view.stageReached[stage]) {
+      classes.push('dp-stage-group--future');
+    } else if (stage && view.stageReached[stage]) {
+      classes.push('dp-stage-group--done');
     }
     if (pinnedBlock === id || hoveredBlock === id) {
       classes.push('dp-block--selected');
@@ -181,9 +210,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
   });
 
   const { IF_ID, ID_EX, EX_MEM, MEM_WB } = snapshot.buffers;
-  const bytesDisplay = view.bigEndianBytes
-    ? view.bigEndianBytes.map(formatHexByte)
-    : ['--', '--', '--', '--'];
+  const f = view.stageReached.ID && ID_EX.valid ? ID_EX.fields : null;
 
   return (
     <div className="datapath-container">
@@ -191,19 +218,32 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
         <div>
           <h2>Ruta de Datos MIPS32 (MIPS 101 · Multiciclo 5 Etapas)</h2>
           <p className="muted dp-subtitle">
-            Pasa el cursor o haz clic en cualquier bloque para ver sus bits exactos y explicación.
+            Todo en binario y decimal. Haz clic o pasa el cursor sobre cualquier bloque para ver qué
+            recibe y qué entrega.
           </p>
         </div>
         <div className="dp-header-badges">
           <span className="badge badge-cycle">Ciclo {snapshot.cycle}</span>
           <span className="badge badge-stage-active">
-            Etapa activa: {view.activeStage ?? 'IDLE'}
+            Etapa activa: {view.activeStage ?? 'LISTO'}
           </span>
-          <span className="badge badge-stage-next">
-            Próxima: {view.nextStage}
-          </span>
-          <span className="badge badge-pc">PC: {formatHex32(view.pc)}</span>
+          <span className="badge badge-stage-next">Próxima: {view.nextStage}</span>
+          <span className="badge badge-pc">PC: {fmtAddrDec(view.pc)}</span>
         </div>
+      </div>
+
+      {/* Franja animada con el cambio exacto de este ciclo */}
+      <div
+        key={snapshot.cycle}
+        className={`dp-cycle-change-bar tone-${
+          view.hasError ? 'error' : view.activeStage?.toLowerCase() ?? 'neutral'
+        }`}
+        aria-live="polite"
+      >
+        <span className="dp-cycle-chip">
+          {view.activeStage ? `Etapa ${view.activeStage}` : 'Inicio'}
+        </span>
+        <span className="dp-cycle-text">{view.cycleSummary}</span>
       </div>
 
       <div className="dp-svg-scroll" onClick={() => setPinnedBlock(null)}>
@@ -304,6 +344,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           {STAGE_ORDER.map((stage) => {
             const meta = STAGE_META[stage];
             const isCurrent = view.activeStage === stage;
+            const isDone = view.stageReached[stage];
             const isErr = view.errorStage === stage;
             return (
               <g key={stage}>
@@ -317,18 +358,28 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
                     isErr
                       ? 'rgba(255, 69, 58, 0.24)'
                       : isCurrent
-                        ? 'rgba(255, 255, 255, 0.12)'
-                        : 'rgba(255, 255, 255, 0.03)'
+                        ? 'rgba(255, 255, 255, 0.14)'
+                        : isDone
+                          ? 'rgba(255, 255, 255, 0.06)'
+                          : 'rgba(255, 255, 255, 0.02)'
                   }
-                  stroke={isErr ? '#FF453A' : isCurrent ? meta.accent : 'rgba(255,255,255,0.08)'}
-                  strokeWidth={isCurrent || isErr ? 1.5 : 1}
+                  stroke={
+                    isErr
+                      ? '#FF453A'
+                      : isCurrent
+                        ? meta.accent
+                        : isDone
+                          ? 'rgba(255,255,255,0.22)'
+                          : 'rgba(255,255,255,0.06)'
+                  }
+                  strokeWidth={isCurrent || isErr ? 1.8 : 1}
                 />
                 <text
                   x={meta.x}
                   y={28}
                   textAnchor="middle"
                   className="dp-stage-pill-text"
-                  fill={isErr ? '#FF453A' : isCurrent ? '#FFFFFF' : '#8E8E93'}
+                  fill={isErr ? '#FF453A' : isCurrent ? '#FFFFFF' : isDone ? '#D1D1D6' : '#6E6E73'}
                 >
                   {meta.label}
                 </text>
@@ -349,9 +400,9 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           <WirePath id="PC_TO_ADD4" d="M 118 314 L 118 165 L 138 165" view={view} />
           <WirePath id="ADD4_TO_IFID" d="M 234 165 L 270 165" view={view} />
           <WirePath id="IMEM_TO_BE" d="M 189 354 L 189 384" view={view} />
-          <WirePath id="BE_TO_IFID" d="M 252 446 L 270 446" view={view} />
+          <WirePath id="BE_TO_IFID" d="M 254 446 L 270 446" view={view} />
 
-          {/* ID Wires (exits aligned to Campos IR bitfield rows) */}
+          {/* ID Wires */}
           <WirePath id="IFID_TO_FIELDS" d="M 312 355 L 328 355" view={view} />
           <WirePath
             id="FIELDS_TO_CTRL"
@@ -426,7 +477,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           <WirePath id="DMEM_TO_MEMWB" d="M 1288 388 L 1308 388" view={view} />
           <WirePath id="EXMEM_BYPASS_MEMWB" d="M 1120 268 L 1308 268" view={view} />
 
-          {/* WB & Feedback Wires (routed outside Campos IR & BR) */}
+          {/* WB & Feedback Wires */}
           <WirePath id="MEMWB_TO_MEMTOREG" d="M 1350 338 L 1390 338" view={view} />
           <WirePath id="MEMWB_MDR_TO_MEMTOREG" d="M 1350 388 L 1390 388" view={view} />
           <WirePath
@@ -445,12 +496,13 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
             view={view}
           />
 
-          {/* Wire Rail Labels */}
+          {/* Wire Rail Labels (solo Decimal claro) */}
           <text x={690} y={53} textAnchor="middle" className="dp-wire-tag">
-            nextPC → PC {view.nextPC !== null ? `(${formatHex32(view.nextPC)})` : ''}
+            nextPC → PC {view.nextPC !== null ? `(${fmtAddrDec(view.nextPC)})` : ''}
           </text>
           <text x={940} y={706} textAnchor="middle" className="dp-wire-tag">
-            Dw (Dato a escribir en BR) {view.dw !== null ? `= ${formatHex32(view.dw)}` : ''}
+            Dw (Dato a escribir en BR){' '}
+            {view.dw !== null ? `= ${fmtSignedDec(view.dw)}` : ''}
           </text>
           <text x={940} y={730} textAnchor="middle" className="dp-wire-tag">
             AW (Registro destino) {view.aw !== null ? `= ${REGISTER_NAMES[view.aw]}` : ''}
@@ -460,62 +512,73 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           {/* PC */}
           <g className={blockClass('PC')} {...bindBlockEvents('PC')}>
             <rect x={26} y={266} width={84} height={96} rx={12} className="dp-box" />
-            <text x={68} y={292} textAnchor="middle" className="dp-title">PC</text>
-            <text x={68} y={310} textAnchor="middle" className="dp-sub">32 bits</text>
-            <rect x={33} y={322} width={70} height={24} rx={6} className="dp-pill" />
-            <text x={68} y={338} textAnchor="middle" className="dp-mono">
-              {formatHex32(view.pc)}
+            <text x={68} y={290} textAnchor="middle" className="dp-title">PC</text>
+            <text x={68} y={306} textAnchor="middle" className="dp-sub">Dirección actual</text>
+            <rect x={31} y={316} width={74} height={24} rx={6} className="dp-pill" />
+            <text x={68} y={332} textAnchor="middle" className="dp-mono">
+              {fmtAddrDec(view.pc)}
+            </text>
+            <text x={68} y={353} textAnchor="middle" className="dp-mono-xs">
+              …{fmtBits(view.pc, 8)}
             </text>
           </g>
 
           {/* PC + 4 */}
-          <g className={blockClass('PC_PLUS_4')} {...bindBlockEvents('PC_PLUS_4')}>
+          <g className={blockClass('PC_PLUS_4', 'IF')} {...bindBlockEvents('PC_PLUS_4')}>
             <rect x={138} y={132} width={96} height={66} rx={12} className="dp-box" />
-            <text x={186} y={155} textAnchor="middle" className="dp-title">Sumador +4</text>
-            <text x={186} y={172} textAnchor="middle" className="dp-sub">PC + 4</text>
+            <text x={186} y={154} textAnchor="middle" className="dp-title">Sumador +4</text>
+            <text x={186} y={170} textAnchor="middle" className="dp-sub">PC + 4</text>
             <text x={186} y={188} textAnchor="middle" className="dp-mono-sm">
-              {formatHex32(view.pcPlus4)}
+              {view.stageReached.IF ? fmtAddrDec(view.pcPlus4) : 'En espera'}
             </text>
           </g>
 
           {/* IMem */}
-          <g className={blockClass('IMEM')} {...bindBlockEvents('IMEM')}>
+          <g className={blockClass('IMEM', 'IF')} {...bindBlockEvents('IMEM')}>
             <rect x={134} y={236} width={110} height={118} rx={12} className="dp-box" />
             <text x={189} y={260} textAnchor="middle" className="dp-title">IMem</text>
             <text x={189} y={276} textAnchor="middle" className="dp-sub">Mem. Instrucciones</text>
-            <text x={189} y={296} textAnchor="middle" className="dp-port">
-              Dir: {formatHex32(view.instructionPc)}
+            <text x={189} y={298} textAnchor="middle" className="dp-port">
+              {view.stageReached.IF ? `Dir: ${fmtAddrDec(view.instructionPc)}` : 'En espera IF'}
             </text>
-            <text x={189} y={316} textAnchor="middle" className="dp-sub">1 byte / dirección</text>
+            <text x={189} y={318} textAnchor="middle" className="dp-sub">1 byte / dirección</text>
             <text x={189} y={338} textAnchor="middle" className="dp-mono-sm">
-              {snapshot.instructionMemory.length} B cargados
+              {snapshot.instructionMemory.length} B totales
             </text>
           </g>
 
-          {/* Reunión Big-Endian (Obligatoria antes de decodificar) */}
-          <g className={blockClass('BIG_ENDIAN')} {...bindBlockEvents('BIG_ENDIAN')}>
-            <rect x={124} y={384} width={130} height={134} rx={12} className="dp-box dp-box-accent" />
+          {/* Reunión Big-Endian */}
+          <g className={blockClass('BIG_ENDIAN', 'IF')} {...bindBlockEvents('BIG_ENDIAN')}>
+            <rect x={122} y={384} width={134} height={134} rx={12} className="dp-box dp-box-accent" />
             <text x={189} y={404} textAnchor="middle" className="dp-title-sm">
               Reunión Big-Endian
             </text>
             <text x={189} y={419} textAnchor="middle" className="dp-sub">
-              4 bytes → 32 bits
+              {view.bigEndianBytes ? '4 bytes → 32 bits' : 'En espera de IF'}
             </text>
-            {bytesDisplay.map((byteHex, idx) => (
-              <g key={idx} transform={`translate(${132 + idx * 29}, 430)`}>
-                <rect width={26} height={36} rx={5} className="dp-byte-cell" />
-                <text x={13} y={13} textAnchor="middle" className="dp-byte-idx">+{idx}</text>
-                <text x={13} y={28} textAnchor="middle" className="dp-mono-xs">{byteHex}</text>
+            {(view.bigEndianBytes ?? [null, null, null, null]).map((byteVal, idx) => (
+              <g key={idx} transform={`translate(${129 + idx * 30}, 430)`}>
+                <rect width={27} height={38} rx={5} className="dp-byte-cell" />
+                <text x={13.5} y={13} textAnchor="middle" className="dp-byte-idx">
+                  +{idx}
+                </text>
+                <text x={13.5} y={28} textAnchor="middle" className="dp-mono-xs">
+                  {byteVal !== null ? fmtByteDec(byteVal) : '--'}
+                </text>
               </g>
             ))}
-            <text x={189} y={484} textAnchor="middle" className="dp-sub">IR [31:0] antes de ID</text>
-            <text x={189} y={504} textAnchor="middle" className="dp-mono-sm">
-              {shortHex(view.irWord)}
+            <text x={189} y={486} textAnchor="middle" className="dp-sub">
+              {view.bigEndianBytes ? 'Bits b0 (31:24) + b3 (7:0)' : 'Sin lectura aún'}
+            </text>
+            <text x={189} y={504} textAnchor="middle" className="dp-mono-xs">
+              {view.bigEndianBytes
+                ? `${fmtByteBin(view.bigEndianBytes[0])} … ${fmtByteBin(view.bigEndianBytes[3])}`
+                : '—'}
             </text>
           </g>
 
           {/* ================= BUFFER 1: IF/ID ================= */}
-          <g className={blockClass('IF_ID')} {...bindBlockEvents('IF_ID')}>
+          <g className={blockClass('IF_ID', 'IF')} {...bindBlockEvents('IF_ID')}>
             <rect
               x={270}
               y={78}
@@ -531,54 +594,80 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               transform="rotate(-90 291 375)"
               className="dp-buffer-label"
             >
-              IF / ID · {IF_ID.valid ? 'VÁLIDO' : 'VACÍO'} · Carga: IF
+              IF / ID · {IF_ID.valid ? 'CARGADO' : 'VACÍO'} · Carga: IF
             </text>
           </g>
 
           {/* ================= STAGE 2: ID ================= */}
-          {/* Divisor de Campos */}
-          <g className={blockClass('FIELDS')} {...bindBlockEvents('FIELDS')}>
-            <rect x={328} y={204} width={138} height={296} rx={12} className="dp-box" />
-            <text x={397} y={226} textAnchor="middle" className="dp-title-sm">Campos IR</text>
-            <text x={397} y={242} textAnchor="middle" className="dp-sub">
-              {view.mnemonic} {view.format ? `(${view.format})` : ''}
+          {/* Divisor de Campos (muestra solo campos relevantes al formato tras ID) */}
+          <g className={blockClass('FIELDS', 'ID')} {...bindBlockEvents('FIELDS')}>
+            <rect x={328} y={214} width={138} height={272} rx={12} className="dp-box" />
+            <text x={397} y={238} textAnchor="middle" className="dp-title-sm">Campos IR</text>
+            <text x={397} y={255} textAnchor="middle" className="dp-sub">
+              {f ? `${f.mnemonic} (Tipo ${f.format})` : 'En espera de etapa ID'}
             </text>
-            <g className="dp-fields-list">
-              <text x={336} y={268} className="dp-field-row">
-                [31:26] op: {view.slices ? `0x${view.slices.opcode.toString(16).toUpperCase().padStart(2, '0')}` : '—'}
+            {f ? (
+              <g className="dp-fields-list">
+                <text x={338} y={284} className="dp-field-row">
+                  op [31:26]: {fmtBits(f.opcode, 6)}
+                </text>
+                <text x={338} y={300} className="dp-sub">
+                  → dec: {f.opcode} ({f.mnemonic})
+                </text>
+                {f.format === 'J' ? (
+                  <>
+                    <text x={338} y={336} className="dp-field-row">
+                      idx [25:0]: {f.jumpIndex}
+                    </text>
+                    <text x={338} y={356} className="dp-sub">
+                      → destino: byte {f.jumpIndex * 4}
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    <text x={338} y={328} className="dp-field-row">
+                      rs: {fmtBits(f.rs, 5)} → {REGISTER_NAMES[f.rs]}
+                    </text>
+                    <text x={338} y={356} className="dp-field-row">
+                      rt: {fmtBits(f.rt, 5)} → {REGISTER_NAMES[f.rt]}
+                    </text>
+                    {f.format === 'R' ? (
+                      <>
+                        <text x={338} y={386} className="dp-field-row">
+                          rd: {fmtBits(f.rd, 5)} → {REGISTER_NAMES[f.rd]}
+                        </text>
+                        <text x={338} y={416} className="dp-field-row">
+                          fn: {fmtBits(f.funct, 6)} (dec {f.funct})
+                        </text>
+                      </>
+                    ) : (
+                      <>
+                        <text x={338} y={392} className="dp-field-row">
+                          imm [15:0]: …{fmtBits(f.imm16, 8)}
+                        </text>
+                        <text x={338} y={412} className="dp-port-out">
+                          → decimal: {f.immSigned}
+                        </text>
+                      </>
+                    )}
+                  </>
+                )}
+              </g>
+            ) : (
+              <text x={397} y={355} textAnchor="middle" className="dp-sub">
+                Pulsa +Etapa (ID)
               </text>
-              <text x={336} y={294} className="dp-field-row">
-                [25:21] rs: {view.slices ? `$${view.slices.rs}` : '—'}
-              </text>
-              <text x={336} y={320} className="dp-field-row">
-                [20:16] rt: {view.slices ? `$${view.slices.rt}` : '—'}
-              </text>
-              <text x={336} y={346} className="dp-field-row">
-                [15:11] rd: {view.slices ? `$${view.slices.rd}` : '—'}
-              </text>
-              <text x={336} y={372} className="dp-field-row">
-                [10:6] sh: {view.slices ? view.slices.shamt : '—'}
-              </text>
-              <text x={336} y={398} className="dp-field-row">
-                [5:0] fn: {view.slices ? `0x${view.slices.funct.toString(16).toUpperCase().padStart(2, '0')}` : '—'}
-              </text>
-              <text x={336} y={428} className="dp-field-row">
-                [15:0] imm: {view.slices ? `0x${view.slices.imm16.toString(16).toUpperCase().padStart(4, '0')}` : '—'}
-              </text>
-              <text x={336} y={458} className="dp-field-row">
-                [25:0] idx: {view.slices ? `0x${view.slices.jumpIndex.toString(16).toUpperCase()}` : '—'}
-              </text>
-            </g>
+            )}
           </g>
 
           {/* Unidad de Control */}
-          <g className={blockClass('CONTROL')} {...bindBlockEvents('CONTROL')}>
+          <g className={blockClass('CONTROL', 'ID')} {...bindBlockEvents('CONTROL')}>
             <rect x={500} y={126} width={162} height={92} rx={12} className="dp-box" />
             <text x={581} y={148} textAnchor="middle" className="dp-title-sm">
               Unidad de Control
             </text>
             <text x={581} y={165} textAnchor="middle" className="dp-sub">
-              {view.controlsValid ? `${view.mnemonic} · Tipo ${view.format}` : 'Pendiente etapa ID'}
+              {view.controlsValid ? `${view.mnemonic} · Tipo ${view.format}` : 'En espera de etapa ID'}
             </text>
             <text x={581} y={185} textAnchor="middle" className="dp-mono-xs">
               {view.controlsValid && view.ctrl
@@ -593,7 +682,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Banco de Registros (BR) */}
-          <g className={blockClass('BR')} {...bindBlockEvents('BR')}>
+          <g className={blockClass('BR', 'ID')} {...bindBlockEvents('BR')}>
             <rect x={500} y={244} width={162} height={224} rx={12} className="dp-box" />
             <text x={581} y={264} textAnchor="middle" className="dp-title-sm">
               Banco Registros (BR)
@@ -601,7 +690,6 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
             <text x={581} y={279} textAnchor="middle" className="dp-sub">
               we (RegWrite) = {view.controlsValid && view.ctrl ? view.ctrl.RegWrite : '—'}
             </text>
-            {/* Left inputs (upper section, vertically separated from DR1/DR2) */}
             <text x={508} y={300} className="dp-port">
               AR1: {view.ar1 !== null ? REGISTER_NAMES[view.ar1] : '—'}
             </text>
@@ -612,16 +700,14 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               AW: {view.aw !== null ? REGISTER_NAMES[view.aw] : '—'}
             </text>
             <text x={508} y={360} className="dp-port">
-              Dw: {shortHex(view.dw)}
+              Dw: {fmtDecOrDash(view.dw)}
             </text>
-            {/* Right outputs (lower section) */}
             <text x={654} y={390} textAnchor="end" className="dp-port-out">
-              DR1: {view.dr1 !== null ? formatHex32(view.dr1) : '—'}
+              DR1: {fmtDecOrDash(view.dr1)}
             </text>
             <text x={654} y={414} textAnchor="end" className="dp-port-out">
-              DR2: {view.dr2 !== null ? formatHex32(view.dr2) : '—'}
+              DR2: {fmtDecOrDash(view.dr2)}
             </text>
-            {/* Status pill */}
             <rect x={506} y={432} width={150} height={22} rx={6} className="dp-pill" />
             <text x={581} y={446} textAnchor="middle" className="dp-pill-text">
               {view.brStatusLabel}
@@ -629,7 +715,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Extensor de Inmediato */}
-          <g className={blockClass('EXTENDER')} {...bindBlockEvents('EXTENDER')}>
+          <g className={blockClass('EXTENDER', 'ID')} {...bindBlockEvents('EXTENDER')}>
             <rect x={500} y={482} width={162} height={82} rx={12} className="dp-box" />
             <text x={581} y={504} textAnchor="middle" className="dp-title-sm">
               Extensor 16 → 32b
@@ -638,12 +724,16 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               ExtOp: {view.extOpLabel}
             </text>
             <text x={581} y={546} textAnchor="middle" className="dp-mono-sm">
-              {shortHex(view.immExt)}
+              {view.immExt !== null
+                ? view.extOpLabel === 'ZERO'
+                  ? `dec: ${fmtUnsignedDec(view.immExt)}`
+                  : `dec: ${fmtSignedDec(view.immExt)}`
+                : 'En espera'}
             </text>
           </g>
 
           {/* ================= BUFFER 2: ID/EX ================= */}
-          <g className={blockClass('ID_EX')} {...bindBlockEvents('ID_EX')}>
+          <g className={blockClass('ID_EX', 'ID')} {...bindBlockEvents('ID_EX')}>
             <rect
               x={680}
               y={78}
@@ -659,47 +749,49 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               transform="rotate(-90 701 375)"
               className="dp-buffer-label"
             >
-              ID / EX · {ID_EX.valid ? 'VÁLIDO' : 'VACÍO'} · Carga: ID
+              ID / EX · {ID_EX.valid ? 'CARGADO' : 'VACÍO'} · Carga: ID
             </text>
           </g>
 
           {/* ================= STAGE 3: EX ================= */}
           {/* Jump Target Concat */}
-          <g className={blockClass('JUMP_CONCAT')} {...bindBlockEvents('JUMP_CONCAT')}>
+          <g className={blockClass('JUMP_CONCAT', 'EX')} {...bindBlockEvents('JUMP_CONCAT')}>
             <rect x={746} y={82} width={118} height={48} rx={10} className="dp-box" />
             <text x={805} y={101} textAnchor="middle" className="dp-title-xs">
               Jump (idx &lt;&lt; 2)
             </text>
             <text x={805} y={119} textAnchor="middle" className="dp-mono-xs">
-              {shortHex(view.jumpTarget)}
+              {fmtByteDecOrDash(view.jumpTarget)}
             </text>
           </g>
 
           {/* Shift Left 2 (Branch) */}
-          <g className={blockClass('SHIFT_BRANCH')} {...bindBlockEvents('SHIFT_BRANCH')}>
+          <g className={blockClass('SHIFT_BRANCH', 'EX')} {...bindBlockEvents('SHIFT_BRANCH')}>
             <rect x={746} y={148} width={74} height={52} rx={10} className="dp-box" />
             <text x={783} y={170} textAnchor="middle" className="dp-title-xs">Shift &lt;&lt; 2</text>
-            <text x={783} y={187} textAnchor="middle" className="dp-sub">imm × 4</text>
+            <text x={783} y={187} textAnchor="middle" className="dp-sub">
+              {view.stageReached.EX && f ? `${f.immSigned * 4} B` : 'imm × 4'}
+            </text>
           </g>
 
           {/* Sumador Branch */}
-          <g className={blockClass('BRANCH_ADDER')} {...bindBlockEvents('BRANCH_ADDER')}>
+          <g className={blockClass('BRANCH_ADDER', 'EX')} {...bindBlockEvents('BRANCH_ADDER')}>
             <rect x={838} y={142} width={96} height={62} rx={10} className="dp-box" />
             <text x={886} y={162} textAnchor="middle" className="dp-title-xs">Sumador Branch</text>
             <text x={886} y={177} textAnchor="middle" className="dp-sub">PC+4 + desp</text>
             <text x={886} y={194} textAnchor="middle" className="dp-mono-xs">
-              {shortHex(view.branchTarget)}
+              {fmtByteDecOrDash(view.branchTarget)}
             </text>
           </g>
 
           {/* Branch Logic (BEQ / BNE) */}
-          <g className={blockClass('BRANCH_LOGIC')} {...bindBlockEvents('BRANCH_LOGIC')}>
+          <g className={blockClass('BRANCH_LOGIC', 'EX')} {...bindBlockEvents('BRANCH_LOGIC')}>
             <rect x={838} y={218} width={96} height={46} rx={10} className="dp-box" />
             <text x={886} y={236} textAnchor="middle" className="dp-title-xs">
               Branch Logic
             </text>
             <text x={886} y={252} textAnchor="middle" className="dp-mono-xs">
-              {EX_MEM.valid && view.errorStage !== 'IF'
+              {view.stageReached.EX
                 ? view.branchTaken
                   ? 'Tomado (1)'
                   : 'No (0)'
@@ -708,7 +800,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Mux PCSrc */}
-          <g className={blockClass('MUX_PCSRC')} {...bindBlockEvents('MUX_PCSRC')}>
+          <g className={blockClass('MUX_PCSRC', 'EX')} {...bindBlockEvents('MUX_PCSRC')}>
             <text x={973} y={124} textAnchor="middle" className="dp-mono-xs">
               sel={view.muxPCSrcSel ?? '—'}
             </text>
@@ -719,7 +811,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Mux Jump */}
-          <g className={blockClass('MUX_JUMP')} {...bindBlockEvents('MUX_JUMP')}>
+          <g className={blockClass('MUX_JUMP', 'EX')} {...bindBlockEvents('MUX_JUMP')}>
             <text x={1031} y={86} textAnchor="middle" className="dp-mono-xs">
               sel={view.muxJumpSel ?? '—'}
             </text>
@@ -730,7 +822,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Mux ALUSrc */}
-          <g className={blockClass('MUX_ALUSRC')} {...bindBlockEvents('MUX_ALUSRC')}>
+          <g className={blockClass('MUX_ALUSRC', 'EX')} {...bindBlockEvents('MUX_ALUSRC')}>
             <rect x={764} y={362} width={40} height={78} rx={10} className="dp-mux" />
             <text x={784} y={380} textAnchor="middle" className="dp-mux-label">0:B</text>
             <text x={784} y={404} textAnchor="middle" className="dp-mux-title">ALUSrc</text>
@@ -741,31 +833,31 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* MIPSALU Trapezoid */}
-          <g className={blockClass('MIPSALU')} {...bindBlockEvents('MIPSALU')}>
+          <g className={blockClass('MIPSALU', 'EX')} {...bindBlockEvents('MIPSALU')}>
             <polygon
               points="836,296 976,324 976,424 836,452 836,396 860,374 836,352"
               className="dp-box"
             />
-            <text x={904} y={367} textAnchor="middle" className="dp-title">MIPSALU</text>
+            <text x={904} y={366} textAnchor="middle" className="dp-title">MIPSALU</text>
             <text x={904} y={385} textAnchor="middle" className="dp-mono-xs">
               {view.aluCtlLabel}
             </text>
             <text x={844} y={322} className="dp-port">
-              A: {view.aluA !== null ? formatHex32(view.aluA) : '—'}
+              A: {fmtDecOrDash(view.aluA)}
             </text>
             <text x={844} y={434} className="dp-port">
-              B: {view.aluB !== null ? formatHex32(view.aluB) : '—'}
+              B: {fmtDecOrDash(view.aluB)}
             </text>
-            <text x={968} y={340} textAnchor="end" className="dp-port-out">
+            <text x={968} y={342} textAnchor="end" className="dp-port-out">
               Zero: {view.zeroFlag !== null ? (view.zeroFlag ? '1' : '0') : '—'}
             </text>
-            <text x={968} y={412} textAnchor="end" className="dp-port-out">
-              Out: {view.aluOut !== null ? formatHex32(view.aluOut) : '—'}
+            <text x={968} y={410} textAnchor="end" className="dp-port-out">
+              Out: {fmtDecOrDash(view.aluOut)}
             </text>
           </g>
 
           {/* ALU Control */}
-          <g className={blockClass('ALU_CONTROL')} {...bindBlockEvents('ALU_CONTROL')}>
+          <g className={blockClass('ALU_CONTROL', 'EX')} {...bindBlockEvents('ALU_CONTROL')}>
             <rect x={844} y={476} width={128} height={62} rx={12} className="dp-box" />
             <text x={908} y={497} textAnchor="middle" className="dp-title-sm">ALU Control</text>
             <text x={908} y={514} textAnchor="middle" className="dp-sub">
@@ -777,7 +869,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* Mux RegDst */}
-          <g className={blockClass('MUX_REGDST')} {...bindBlockEvents('MUX_REGDST')}>
+          <g className={blockClass('MUX_REGDST', 'EX')} {...bindBlockEvents('MUX_REGDST')}>
             <rect x={764} y={566} width={40} height={74} rx={10} className="dp-mux" />
             <text x={784} y={584} textAnchor="middle" className="dp-mux-label">0:rt</text>
             <text x={784} y={606} textAnchor="middle" className="dp-mux-title">RegDst</text>
@@ -788,7 +880,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* ================= BUFFER 3: EX/MEM ================= */}
-          <g className={blockClass('EX_MEM')} {...bindBlockEvents('EX_MEM')}>
+          <g className={blockClass('EX_MEM', 'EX')} {...bindBlockEvents('EX_MEM')}>
             <rect
               x={1078}
               y={78}
@@ -804,7 +896,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               transform="rotate(-90 1099 375)"
               className="dp-buffer-label"
             >
-              EX / MEM · {EX_MEM.valid ? 'VÁLIDO' : 'VACÍO'} · Carga: EX
+              EX / MEM · {EX_MEM.valid ? 'CARGADO' : 'VACÍO'} · Carga: EX
             </text>
           </g>
 
@@ -812,23 +904,24 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           <text x={1216} y={258} textAnchor="middle" className="dp-wire-tag">
             Bypass ALUOut
           </text>
-          <g className={blockClass('DMEM')} {...bindBlockEvents('DMEM')}>
+          <g className={blockClass('DMEM', 'MEM')} {...bindBlockEvents('DMEM')}>
             <rect x={1144} y={298} width={144} height={180} rx={12} className="dp-box" />
             <text x={1216} y={322} textAnchor="middle" className="dp-title-sm">
               Memoria Datos
             </text>
             <text x={1216} y={338} textAnchor="middle" className="dp-sub">(DMem · Big-Endian)</text>
             <text x={1152} y={362} className="dp-port">
-              Address: {EX_MEM.valid && view.errorStage !== 'IF' ? formatHex32(EX_MEM.aluResult) : '—'}
+              Dir: {view.stageReached.EX ? fmtAddrDec(EX_MEM.aluResult) : 'En espera'}
             </text>
             <text x={1152} y={390} className="dp-port">
-              WriteData: {EX_MEM.valid && view.errorStage !== 'IF' ? formatHex32(EX_MEM.writeData) : '—'}
+              Dato: {view.stageReached.EX ? fmtSignedDec(EX_MEM.writeData) : '—'}
             </text>
             <text x={1216} y={418} textAnchor="middle" className="dp-mono-xs">
-              MR={view.controlsValid && view.ctrl ? view.ctrl.MemRead : '—'} · MW={view.controlsValid && view.ctrl ? view.ctrl.MemWrite : '—'}
+              MR={view.controlsValid && view.ctrl ? view.ctrl.MemRead : '—'} · MW=
+              {view.controlsValid && view.ctrl ? view.ctrl.MemWrite : '—'}
             </text>
             <text x={1216} y={442} textAnchor="middle" className="dp-port-out">
-              MDR: {view.mdr !== null ? formatHex32(view.mdr) : '—'}
+              MDR: {fmtDecOrDash(view.mdr)}
             </text>
             <rect x={1156} y={450} width={120} height={20} rx={6} className="dp-pill" />
             <text x={1216} y={463} textAnchor="middle" className="dp-mono-xs">
@@ -837,7 +930,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
           </g>
 
           {/* ================= BUFFER 4: MEM/WB ================= */}
-          <g className={blockClass('MEM_WB')} {...bindBlockEvents('MEM_WB')}>
+          <g className={blockClass('MEM_WB', 'MEM')} {...bindBlockEvents('MEM_WB')}>
             <rect
               x={1308}
               y={78}
@@ -853,12 +946,12 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               transform="rotate(-90 1329 375)"
               className="dp-buffer-label"
             >
-              MEM / WB · {MEM_WB.valid ? 'VÁLIDO' : 'VACÍO'} · Carga: MEM
+              MEM / WB · {MEM_WB.valid ? 'CARGADO' : 'VACÍO'} · Carga: MEM
             </text>
           </g>
 
           {/* ================= STAGE 5: WB ================= */}
-          <g className={blockClass('MUX_MEMTOREG')} {...bindBlockEvents('MUX_MEMTOREG')}>
+          <g className={blockClass('MUX_MEMTOREG', 'MEM')} {...bindBlockEvents('MUX_MEMTOREG')}>
             <rect x={1390} y={318} width={44} height={88} rx={10} className="dp-mux" />
             <text x={1412} y={338} textAnchor="middle" className="dp-mux-label">0:ALU</text>
             <text x={1412} y={362} textAnchor="middle" className="dp-mux-title">M2Reg</text>
@@ -867,9 +960,73 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               sel={view.muxMemToRegSel ?? '—'}
             </text>
             <text x={1412} y={442} textAnchor="middle" className="dp-mono-xs">
-              Dw={shortHex(view.dw)}
+              Dw={fmtDecOrDash(view.dw)}
             </text>
           </g>
+
+          {/* Floating Value Badges on Active Wires */}
+          {view.activeStage === 'IF' && view.bigEndianBytes && (
+            <WireBadge
+              x={189}
+              y={369}
+              text={`4 bytes [${view.bigEndianBytes.map(fmtByteDec).join(',')}]`}
+              tone="blue"
+            />
+          )}
+          {view.activeStage === 'ID' && view.dr1 !== null && (
+            <WireBadge
+              x={581}
+              y={230}
+              text={`DR1=${fmtSignedDec(view.dr1)}${view.immExt !== null ? ` · imm=${fmtSignedDec(view.immExt)}` : ''}`}
+              tone="purple"
+            />
+          )}
+          {view.activeStage === 'EX' && view.aluOut !== null && (
+            <>
+              <WireBadge
+                x={1026}
+                y={386}
+                text={`ALU = ${fmtSignedDec(view.aluOut)}`}
+                tone="orange"
+              />
+              {view.nextPC !== null && (
+                <WireBadge
+                  x={1031}
+                  y={64}
+                  text={`nextPC = ${fmtAddrDec(view.nextPC)}`}
+                  tone="orange"
+                />
+              )}
+            </>
+          )}
+          {view.activeStage === 'MEM' && view.dw !== null && (
+            <WireBadge
+              x={1216}
+              y={246}
+              text={`Dw = ${fmtSignedDec(view.dw)}`}
+              tone="cyan"
+            />
+          )}
+          {view.activeStage === 'WB' && view.dw !== null && (
+            <>
+              <WireBadge
+                x={940}
+                y={692}
+                text={
+                  view.regWriteEnabled && view.aw !== null
+                    ? `${REGISTER_NAMES[view.aw]} ← ${fmtSignedDec(view.dw)}`
+                    : 'Sin escritura BR'
+                }
+                tone="green"
+              />
+              <WireBadge
+                x={690}
+                y={74}
+                text={`Nuevo PC = ${fmtAddrDec(view.pc)}`}
+                tone="orange"
+              />
+            </>
+          )}
         </svg>
       </div>
 
@@ -895,7 +1052,7 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
         </span>
       </div>
 
-      {/* Interactive Hover/Click Detail Inspector */}
+      {/* Interactive Input / Output Binary + Decimal Block Inspector */}
       <div className={`dp-inspector-card ${inspectedInfo ? 'is-visible' : ''}`}>
         {inspectedInfo ? (
           <>
@@ -922,36 +1079,62 @@ export function DatapathSVG({ snapshot }: DatapathSVGProps) {
               </div>
             </div>
             <p className="dp-inspector-summary">{inspectedInfo.beginnerSummary}</p>
-            <div className="dp-inspector-grid">
-              <div>
-                <span className="dp-inspector-label">Bits y Puertos Exactos</span>
-                <div className="dp-bit-pills">
-                  {inspectedInfo.bitRanges.map((b) => (
-                    <code key={b} className="dp-bit-pill">{b}</code>
-                  ))}
-                </div>
+            <div className="dp-inspector-io-grid">
+              <div className="dp-io-card">
+                <span className="dp-inspector-label">Lo que RECIBE (Entradas)</span>
+                <table className="dp-io-table">
+                  <thead>
+                    <tr>
+                      <th>Entrada</th>
+                      <th>Binario</th>
+                      <th>Significado (Decimal)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspectedInfo.inputs.map((sig) => (
+                      <tr key={sig.name}>
+                        <td>{sig.name}</td>
+                        <td>
+                          <code>{sig.binary}</code>
+                        </td>
+                        <td className="dp-io-dec">{sig.decimalMeaning}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <span className="dp-inspector-label">Valores en Vivo</span>
-                <dl className="dp-live-dl">
-                  {inspectedInfo.liveValues.map((lv) => (
-                    <div key={lv.label} className="dp-live-row">
-                      <dt>{lv.label}</dt>
-                      <dd>
-                        <code>{lv.value}</code>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+
+              <div className="dp-io-card">
+                <span className="dp-inspector-label">Lo que ENTREGA (Salidas)</span>
+                <table className="dp-io-table">
+                  <thead>
+                    <tr>
+                      <th>Salida</th>
+                      <th>Binario</th>
+                      <th>Significado (Decimal)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspectedInfo.outputs.map((sig) => (
+                      <tr key={sig.name}>
+                        <td>{sig.name}</td>
+                        <td>
+                          <code>{sig.binary}</code>
+                        </td>
+                        <td className="dp-io-dec">{sig.decimalMeaning}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </>
         ) : (
           <p className="muted dp-inspector-empty">
-            Pasa el cursor o haz clic sobre cualquier bloque del diagrama (<code>PC</code>,{' '}
-            <code>Reunión Big-Endian</code>, <code>BR</code>, <code>MIPSALU</code>,{' '}
-            <code>Muxes</code>, <code>DMem</code> o buffers) para inspeccionar sus bits y función
-            sin saturar la vista.
+            Haz clic o pasa el cursor sobre cualquier bloque (<code>PC</code>,{' '}
+            <code>Reunión Big-Endian</code>, <code>Campos IR</code>, <code>BR</code>,{' '}
+            <code>MIPSALU</code>, <code>DMem</code> o buffers) para ver exactamente qué recibe en
+            binario y qué significa en decimal.
           </p>
         )}
       </div>

@@ -186,9 +186,9 @@ export function EditorControls({
           className="btn-ghost"
           onClick={handleExportHex}
           disabled={!assembleResult?.ok}
-          title="Descargar archivo .hex (1 byte por línea)"
+          title="Descargar imagen cargable (1 byte por dirección)"
         >
-          ↓ .hex
+          ↓ Imagen (1B/dir)
         </button>
       </div>
 

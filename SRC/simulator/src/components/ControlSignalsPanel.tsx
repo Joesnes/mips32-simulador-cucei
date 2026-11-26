@@ -1,10 +1,17 @@
 /**
  * Panel de las 12 señales de la Unidad de Control y los 4 buffers intermedios
- * (IF/ID, ID/EX, EX/MEM, MEM/WB) con valores en vivo y resaltado de actualizaciones.
+ * (IF/ID, ID/EX, EX/MEM, MEM/WB) con valores en Binario y Decimal.
  */
 import type { CpuSnapshot } from '@core/types';
-import { REGISTER_NAMES, formatHex32, formatHexByte, toInt32 } from '@core/isa';
+import { REGISTER_NAMES } from '@core/isa';
 import { deriveControlSignalsView } from '../utils/datapathModel';
+import {
+  fmtAddrDec,
+  fmtByteBin,
+  fmtByteDec,
+  fmtSignedDec,
+  fmtWordBin32,
+} from '../utils/numberFormat';
 
 export interface ControlSignalsPanelProps {
   snapshot: CpuSnapshot;
@@ -15,6 +22,21 @@ const GROUP_TITLES: Record<'datapath' | 'memory' | 'flow', string> = {
   memory: 'Registros y Memoria',
   flow: 'Control de Flujo y ALU',
 };
+
+function BinDecValue({
+  dec,
+  bin,
+}: {
+  dec: string;
+  bin: string;
+}) {
+  return (
+    <span className="buf-val-stack">
+      <strong className="buf-dec">{dec}</strong>
+      <code className="buf-bin">{bin}</code>
+    </span>
+  );
+}
 
 export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
   const ctrlView = deriveControlSignalsView(snapshot);
@@ -105,7 +127,9 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
                 <dt>pc / pcPlus4</dt>
                 <dd>
                   <code>
-                    {IF_ID.valid ? `${formatHex32(IF_ID.pc)} / ${formatHex32(IF_ID.pcPlus4)}` : '—'}
+                    {IF_ID.valid
+                      ? `${fmtAddrDec(IF_ID.pc)} / ${fmtAddrDec(IF_ID.pcPlus4)}`
+                      : '—'}
                   </code>
                 </dd>
               </div>
@@ -113,14 +137,20 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
                 <dt>bytes Big-Endian</dt>
                 <dd>
                   <code>
-                    {IF_ID.valid ? `[${IF_ID.bytes.map(formatHexByte).join(' ')}]` : '—'}
+                    {IF_ID.valid
+                      ? IF_ID.bytes.map((b) => `${fmtByteBin(b)} (${fmtByteDec(b)})`).join(' · ')
+                      : '—'}
                   </code>
                 </dd>
               </div>
               <div>
                 <dt>instruction (IR)</dt>
                 <dd>
-                  <code>{IF_ID.valid ? formatHex32(IF_ID.instruction) : '—'}</code>
+                  {IF_ID.valid ? (
+                    <code className="buf-bin">{fmtWordBin32(IF_ID.instruction)}</code>
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
             </dl>
@@ -166,19 +196,27 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
               <div>
                 <dt>A (DR1) / B (DR2)</dt>
                 <dd>
-                  <code>
-                    {ID_EX.valid ? `${formatHex32(ID_EX.A)} / ${formatHex32(ID_EX.B)}` : '—'}
-                  </code>
+                  {ID_EX.valid ? (
+                    <BinDecValue
+                      dec={`A=${fmtSignedDec(ID_EX.A)} / B=${fmtSignedDec(ID_EX.B)}`}
+                      bin={`${fmtWordBin32(ID_EX.A)}`}
+                    />
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
               <div>
                 <dt>immExt ({ID_EX.valid ? ID_EX.ctrl.ExtOp : '—'})</dt>
                 <dd>
-                  <code>
-                    {ID_EX.valid
-                      ? `${formatHex32(ID_EX.immExt)} (${toInt32(ID_EX.immExt)})`
-                      : '—'}
-                  </code>
+                  {ID_EX.valid ? (
+                    <BinDecValue
+                      dec={fmtSignedDec(ID_EX.immExt)}
+                      bin={fmtWordBin32(ID_EX.immExt)}
+                    />
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
             </dl>
@@ -208,7 +246,7 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
                 <dd>
                   <code>
                     {EX_MEM.valid
-                      ? `${formatHex32(EX_MEM.aluOperandA)} / ${formatHex32(EX_MEM.aluOperandB)}`
+                      ? `${fmtSignedDec(EX_MEM.aluOperandA)} / ${fmtSignedDec(EX_MEM.aluOperandB)}`
                       : '—'}
                   </code>
                 </dd>
@@ -216,11 +254,14 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
               <div>
                 <dt>ALUOut / Zero</dt>
                 <dd>
-                  <code>
-                    {EX_MEM.valid
-                      ? `${formatHex32(EX_MEM.aluResult)} / ${EX_MEM.zero ? '1' : '0'}`
-                      : '—'}
-                  </code>
+                  {EX_MEM.valid ? (
+                    <BinDecValue
+                      dec={`${fmtSignedDec(EX_MEM.aluResult)} · Zero=${EX_MEM.zero ? '1' : '0'}`}
+                      bin={fmtWordBin32(EX_MEM.aluResult)}
+                    />
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
               <div>
@@ -228,7 +269,7 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
                 <dd>
                   <code>
                     {EX_MEM.valid
-                      ? `${formatHex32(EX_MEM.writeData)} / ${REGISTER_NAMES[EX_MEM.writeReg]}`
+                      ? `${fmtSignedDec(EX_MEM.writeData)} / ${REGISTER_NAMES[EX_MEM.writeReg]}`
                       : '—'}
                   </code>
                 </dd>
@@ -238,7 +279,7 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
                 <dd>
                   <code>
                     {EX_MEM.valid
-                      ? `${EX_MEM.branchTaken ? 'Sí' : 'No'} / ${formatHex32(EX_MEM.nextPC)}`
+                      ? `${EX_MEM.branchTaken ? 'Sí (1)' : 'No (0)'} / ${fmtAddrDec(EX_MEM.nextPC)}`
                       : '—'}
                   </code>
                 </dd>
@@ -268,29 +309,39 @@ export function ControlSignalsPanel({ snapshot }: ControlSignalsPanelProps) {
               <div>
                 <dt>memReadData (MDR)</dt>
                 <dd>
-                  <code>{MEM_WB.valid ? formatHex32(MEM_WB.memReadData) : '—'}</code>
+                  {MEM_WB.valid ? (
+                    <BinDecValue
+                      dec={fmtSignedDec(MEM_WB.memReadData)}
+                      bin={fmtWordBin32(MEM_WB.memReadData)}
+                    />
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
               <div>
                 <dt>aluResult</dt>
                 <dd>
-                  <code>{MEM_WB.valid ? formatHex32(MEM_WB.aluResult) : '—'}</code>
+                  <code>{MEM_WB.valid ? fmtSignedDec(MEM_WB.aluResult) : '—'}</code>
                 </dd>
               </div>
               <div>
                 <dt>Dw (writeBackData) / AW</dt>
                 <dd>
-                  <code>
-                    {MEM_WB.valid
-                      ? `${formatHex32(MEM_WB.writeBackData)} / ${REGISTER_NAMES[MEM_WB.writeReg]}`
-                      : '—'}
-                  </code>
+                  {MEM_WB.valid ? (
+                    <BinDecValue
+                      dec={`${fmtSignedDec(MEM_WB.writeBackData)} → ${REGISTER_NAMES[MEM_WB.writeReg]}`}
+                      bin={fmtWordBin32(MEM_WB.writeBackData)}
+                    />
+                  ) : (
+                    <code>—</code>
+                  )}
                 </dd>
               </div>
               <div>
                 <dt>nextPC</dt>
                 <dd>
-                  <code>{MEM_WB.valid ? formatHex32(MEM_WB.nextPC) : '—'}</code>
+                  <code>{MEM_WB.valid ? fmtAddrDec(MEM_WB.nextPC) : '—'}</code>
                 </dd>
               </div>
             </dl>
