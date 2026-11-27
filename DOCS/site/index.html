@@ -3,74 +3,413 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Reporte Técnico — Simulador MIPS 32 bits (Modalidad B)</title>
+    <meta name="color-scheme" content="dark" />
+    <title>Reporte Técnico — Simulador MIPS de 32 bits</title>
+    <meta name="description" content="Reporte técnico del proyecto final de Arquitectura de Computadoras (UdeG / CUCEI): ensamblador, procesador MIPS multiciclo y simulador web interactivo." />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="hero">
       <div class="container">
         <p class="eyebrow">Universidad de Guadalajara · CUCEI · Arquitectura de Computadoras</p>
-        <h1>Sistema MIPS de 32 bits — Modalidad B (Simulador Web Interactivo)</h1>
+        <h1>Sistema MIPS de 32 bits<span class="hero-sub">Modalidad B · Simulador web interactivo</span></h1>
         <p class="lead">
-          Ensamblador de 2 pasadas, memoria big-endian de 1 byte por dirección y simulador multiciclo
-          de 5 etapas con visualización interactiva de señales de control, buffers y estado.
+          Ensamblador de 2 pasadas, memoria big-endian de 1 byte por dirección y procesador multiciclo de 5 etapas
+          (IF, ID, EX, MEM, WB) con 12 instrucciones. El simulador muestra cómo los bits de cada instrucción se
+          convierten en señales de control y cambian el PC, los buffers, los registros y la memoria.
         </p>
         <div class="cta-row">
-          <a class="btn-primary" href="./simulador/">Abrir Simulador Interactivo →</a>
-          <a class="btn-secondary" href="#arquitectura">Ver Arquitectura</a>
+          <a class="btn-primary" href="./simulador/">Abrir el simulador <span aria-hidden="true">→</span></a>
+          <a class="btn-secondary" href="https://github.com/Joesnes/mips32-simulador-cucei">Repositorio en GitHub</a>
         </div>
+        <ul class="team">
+          <li><strong>Alejandro Espinoza</strong><span>Procesador, control, buffers e interfaz del simulador</span></li>
+          <li><strong>Fares Khalifa</strong><span>Ensamblador, algoritmo, pruebas, trazas y reporte</span></li>
+        </ul>
       </div>
     </header>
 
+    <nav class="toc" aria-label="Contenido">
+      <div class="container toc-inner">
+        <a href="#objetivos">Objetivos</a>
+        <a href="#arquitectura">Arquitectura</a>
+        <a href="#isa">Instrucciones</a>
+        <a href="#ensamblador">Ensamblador</a>
+        <a href="#algoritmo">Algoritmo</a>
+        <a href="#pruebas">Pruebas</a>
+        <a href="#trazas">Trazas</a>
+        <a href="#reproduccion">Reproducción</a>
+        <a href="#referencias">Referencias</a>
+        <a href="#ia">Uso de IA</a>
+        <a href="#conclusiones">Conclusiones</a>
+      </div>
+    </nav>
+
     <main class="container">
       <section id="objetivos">
-        <h2>1. Introducción y Objetivos</h2>
+        <h2><span class="num">1</span>Introducción y objetivos</h2>
         <p>
-          Este reporte técnico documenta el diseño, implementación y validación de un procesador
-          didáctico MIPS de 32 bits en el navegador, demostrando cómo los 32 bits de una instrucción
-          reunidos desde memoria big-endian se decodifican en señales de control y producen cambios
-          verificables en el PC, los buffers intermedios, el banco de registros y la memoria de datos.
+          El proyecto construye y valida, en el navegador, un sistema MIPS de 32 bits completo: un programa en
+          ensamblador se traduce a código máquina, se carga en una memoria de instrucciones de 1 byte por dirección
+          y se ejecuta paso a paso en una ruta de datos multiciclo con una instrucción activa a la vez.
         </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Ensamblar</h3>
+            <p>Traducir texto MIPS a palabras de 32 bits con etiquetas, validación de rangos y diagnósticos por línea, y exportar una imagen <code>.hex</code> cargable.</p>
+          </article>
+          <article class="card">
+            <h3>Ejecutar</h3>
+            <p>Implementar las 12 instrucciones del proyecto en 5 etapas, con búsqueda big-endian de 4 bytes, buffers entre etapas y detención visible ante errores.</p>
+          </article>
+          <article class="card">
+            <h3>Visualizar</h3>
+            <p>Mostrar en cada etapa el PC, los bytes leídos, los campos, las señales de control, las rutas activas y los cambios de registros y memoria.</p>
+          </article>
+          <article class="card">
+            <h3>Validar</h3>
+            <p>Comprobar cada instrucción, los casos de integración de la consigna y un algoritmo completo (Selection Sort) con tres entradas, incluida una de borde.</p>
+          </article>
+        </div>
       </section>
 
       <section id="arquitectura">
-        <h2>2. Diagrama del Datapath, Módulos y Buffers</h2>
-        <p><em>Sección en construcción (Alejandro Espinoza — Día 7: diagramas SVG propios y tabla de buffers).</em></p>
+        <h2><span class="num">2</span>Arquitectura: datapath, módulos y buffers</h2>
+        <p>
+          Procesador multiciclo de 5 etapas con una instrucción activa a la vez. Cada etapa toma un ciclo y actualiza
+          un registro intermedio, así que cada instrucción tarda 5 ciclos. Los saltos se aplican sin ranura de retardo.
+        </p>
+        <figure class="figure">
+          <img src="./assets/datapath-multiciclo.svg" alt="Ruta de datos MIPS32 multiciclo de 5 etapas con reunión big-endian, señales de control y buffers intermedios" loading="lazy" />
+          <figcaption>Figura 1. Ruta de datos MIPS32 multiciclo con reunión big-endian y buffers intermedios.</figcaption>
+        </figure>
+        <div class="figure-row">
+          <figure class="figure">
+            <img src="./assets/reunion-big-endian.svg" alt="Reunión de 4 bytes big-endian para addiu $t0, $zero, 5" loading="lazy" />
+            <figcaption>Figura 2. Los 4 bytes se reúnen (del más significativo al menos significativo) antes de decodificar.</figcaption>
+          </figure>
+          <figure class="figure">
+            <img src="./assets/buffers-multiciclo.svg" alt="Registros intermedios IF/ID, ID/EX, EX/MEM y MEM/WB" loading="lazy" />
+            <figcaption>Figura 3. Anchos, carga, validez y reset de los 4 buffers intermedios.</figcaption>
+          </figure>
+        </div>
+
+        <h3>Etapas y buffers</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Etapa</th><th>Qué hace</th><th>Buffer que carga</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag">IF</span></td><td>Valida que el PC esté alineado y dentro del programa, lee <code>mem[PC..PC+3]</code> y forma la palabra big-endian.</td><td><code>IF/ID</code>: PC, PC+4, 4 bytes, instrucción</td></tr>
+              <tr><td><span class="tag">ID</span></td><td>Separa los campos, genera las 12 señales de control, lee <code>R[rs]</code> y <code>R[rt]</code> y extiende el inmediato (con signo o con ceros).</td><td><code>ID/EX</code>: campos, A, B, inmediato extendido, control</td></tr>
+              <tr><td><span class="tag">EX</span></td><td>Opera en la ALU, calcula la dirección efectiva, el destino de rama o de <code>j</code> y el siguiente PC.</td><td><code>EX/MEM</code>: resultado ALU, Zero, destinos, siguiente PC</td></tr>
+              <tr><td><span class="tag">MEM</span></td><td><code>lw</code> lee y <code>sw</code> escribe una palabra big-endian; un acceso inválido detiene sin modificar nada.</td><td><code>MEM/WB</code>: dato leído, dato a escribir</td></tr>
+              <tr><td><span class="tag">WB</span></td><td>Escribe el registro destino (las escrituras a <code>$zero</code> se descartan) y actualiza el PC.</td><td>Banco de registros y PC</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Módulos del repositorio</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Módulo</th><th>Ubicación</th><th>Responsable</th></tr></thead>
+            <tbody>
+              <tr><td>Contratos de tipos e ISA</td><td><code>SRC/core/types.ts</code>, <code>SRC/core/isa.ts</code></td><td>Alejandro Espinoza</td></tr>
+              <tr><td>CPU: ALU, banco de registros, memorias, control y máquina de 5 etapas</td><td><code>SRC/core/cpu/</code></td><td>Alejandro Espinoza</td></tr>
+              <tr><td>Ensamblador y CLI de imágenes</td><td><code>SRC/core/assembler/</code></td><td>Fares Khalifa</td></tr>
+              <tr><td>Programas, ejemplos R/I/J y entradas</td><td><code>SRC/programs/</code></td><td>Fares Khalifa</td></tr>
+              <tr><td>Simulador web (datapath SVG, señales, paneles)</td><td><code>SRC/simulator/</code></td><td>Alejandro Espinoza</td></tr>
+              <tr><td>Pruebas automatizadas</td><td><code>VERIF/tests/</code></td><td>Ambos</td></tr>
+              <tr><td>Trazas y reporte de pruebas</td><td><code>VERIF/traces/</code>, <code>VERIF/results/</code></td><td>Fares Khalifa (traza R: Alejandro)</td></tr>
+              <tr><td>Módulos de referencia del curso</td><td><code>RTL/referencia/</code></td><td>Material de clase</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section id="isa">
-        <h2>3. Tabla de Instrucciones (12 instrucciones)</h2>
-        <p><em>Sección en construcción (Fares Khalifa — Día 7: tabla completa con opcodes, functs y señales).</em></p>
+        <h2><span class="num">3</span>Las 12 instrucciones</h2>
+        <p>
+          Las 11 filas de la tabla de la consigna más <code>bne</code>, que la consigna menciona en la validación del ensamblador.
+          <code>addiu</code> se acepta como alias de <code>addi</code> (mismo opcode). Las señales son las que genera la unidad de control.
+        </p>
+        <div class="table-wrap">
+          <table class="isa">
+            <thead>
+              <tr>
+                <th>Tipo</th><th>Sintaxis</th><th>Opcode / funct</th><th>Operación</th>
+                <th title="RegDst">RegDst</th><th title="ALUSrc">ALUSrc</th><th title="ExtOp">ExtOp</th><th title="MemToReg">MemToReg</th>
+                <th title="RegWrite">RegWrite</th><th title="MemRead">MemRead</th><th title="MemWrite">MemWrite</th>
+                <th title="Branch">Branch</th><th title="BranchNe">BranchNe</th><th title="Jump">Jump</th><th title="ALUOp">ALUOp</th><th title="ALUctl">ALUctl</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="tag r">R</span></td><td><code>add $rd, $rs, $rt</code></td><td><code>00 / 21</code></td><td>Suma módulo 2³²</td><td>1</td><td>0</td><td>—</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>10</td><td>0010</td></tr>
+              <tr><td><span class="tag r">R</span></td><td><code>sub $rd, $rs, $rt</code></td><td><code>00 / 23</code></td><td>Resta módulo 2³²</td><td>1</td><td>0</td><td>—</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>10</td><td>0110</td></tr>
+              <tr><td><span class="tag r">R</span></td><td><code>and $rd, $rs, $rt</code></td><td><code>00 / 24</code></td><td>AND bit a bit</td><td>1</td><td>0</td><td>—</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>10</td><td>0000</td></tr>
+              <tr><td><span class="tag r">R</span></td><td><code>or $rd, $rs, $rt</code></td><td><code>00 / 25</code></td><td>OR bit a bit</td><td>1</td><td>0</td><td>—</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>10</td><td>0001</td></tr>
+              <tr><td><span class="tag r">R</span></td><td><code>slt $rd, $rs, $rt</code></td><td><code>00 / 2A</code></td><td>1 si rs &lt; rt con signo, si no 0</td><td>1</td><td>0</td><td>—</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>10</td><td>0111</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>addi $rt, $rs, #imm</code></td><td><code>09</code></td><td>Suma con inmediato extendido con signo</td><td>0</td><td>1</td><td>signo</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>00</td><td>0010</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>ori $rt, $rs, #imm</code></td><td><code>0D</code></td><td>OR con inmediato extendido con ceros</td><td>0</td><td>1</td><td>ceros</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>11</td><td>0001</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>lw $rt, #desp($rs)</code></td><td><code>23</code></td><td>Carga palabra de <code>R[rs] + desp</code></td><td>0</td><td>1</td><td>signo</td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>00</td><td>0010</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>sw $rt, #desp($rs)</code></td><td><code>2B</code></td><td>Guarda <code>R[rt]</code> en <code>R[rs] + desp</code></td><td>0</td><td>1</td><td>signo</td><td>0</td><td>0</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>00</td><td>0010</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>beq $rs, $rt, #etiqueta</code></td><td><code>04</code></td><td>Salta si rs = rt</td><td>0</td><td>0</td><td>signo</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>0</td><td>0</td><td>01</td><td>0110</td></tr>
+              <tr><td><span class="tag i">I</span></td><td><code>bne $rs, $rt, #etiqueta</code></td><td><code>05</code></td><td>Salta si rs ≠ rt</td><td>0</td><td>0</td><td>signo</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>0</td><td>01</td><td>0110</td></tr>
+              <tr><td><span class="tag j">J</span></td><td><code>j #etiqueta</code></td><td><code>02</code></td><td>Salta a <code>PC+4[31:28] · índice · 00</code></td><td>0</td><td>0</td><td>—</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>00</td><td>0010</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Campos de mayor a menor peso — R: opcode(6) rs(5) rt(5) rd(5) shamt(5) funct(6) · I: opcode(6) rs(5) rt(5) inmediato(16) ·
+          J: opcode(6) índice(26). En <code>beq</code>/<code>bne</code> el destino es <code>PC + 4 + 4 × inmediato</code>.
+        </p>
+      </section>
+
+      <section id="ensamblador">
+        <h2><span class="num">4</span>Ensamblador</h2>
+        <div class="two-col">
+          <div>
+            <h3>Dos pasadas</h3>
+            <ol>
+              <li><strong>Pasada 1:</strong> separa cada línea en etiquetas, mnemónico y operandos, registra cada etiqueta con su dirección de byte y asigna direcciones de 4 en 4 desde 0.</li>
+              <li><strong>Pasada 2:</strong> valida operandos y rangos, codifica la palabra de 32 bits y arma la imagen big-endian, el <code>.hex</code> (1 byte por línea) y el listado (dirección, palabra, binario por campos y fuente).</li>
+            </ol>
+            <p>Acepta registros numéricos (<code>$0</code>–<code>$31</code>) y alias (<code>$zero</code>, <code>$t0</code>–<code>$t9</code>, <code>$s0</code>–<code>$s7</code>…), comentarios con <code>#</code> y el prefijo <code>#</code> de la consigna en inmediatos y etiquetas (<code>#5</code>, <code>#fin</code>).</p>
+          </div>
+          <div>
+            <h3>Diagnósticos por línea</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Código</th><th>Cuándo</th></tr></thead>
+                <tbody>
+                  <tr><td><code>INVALID_MNEMONIC</code></td><td>Instrucción desconocida</td></tr>
+                  <tr><td><code>INVALID_REGISTER</code></td><td>Registro fuera de <code>$0</code>–<code>$31</code> o alias inexistente</td></tr>
+                  <tr><td><code>INVALID_SYNTAX</code></td><td>Operandos faltantes, de más o mal formados</td></tr>
+                  <tr><td><code>DUPLICATE_LABEL</code> / <code>UNDEFINED_LABEL</code></td><td>Etiqueta repetida o no definida</td></tr>
+                  <tr><td><code>IMMEDIATE_OUT_OF_RANGE</code></td><td><code>addi</code>/<code>lw</code>/<code>sw</code> fuera de [−32768, 32767]; <code>ori</code> fuera de [0, 65535]</td></tr>
+                  <tr><td><code>BRANCH_OUT_OF_RANGE</code></td><td>Desplazamiento de <code>beq</code>/<code>bne</code> que no cabe en 16 bits con signo</td></tr>
+                  <tr><td><code>UNALIGNED_TARGET</code> / <code>JUMP_OUT_OF_REGION</code></td><td>Destino no alineado a 4 o <code>j</code> fuera de la región de 256 MiB de PC+4</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <p class="note">Ejemplo de la consigna: <code>addiu $t0, $zero, 5</code> → <code>0x24080005</code> → bytes <code>24 08 00 05</code> en las direcciones 0 a 3.</p>
       </section>
 
       <section id="algoritmo">
-        <h2>4. Algoritmo: Ordenamiento por Selección (Selection Sort)</h2>
-        <p><em>Sección en construcción (Fares Khalifa — Día 7: pseudocódigo, mapa de registros y datos).</em></p>
+        <h2><span class="num">5</span>Algoritmo: ordenamiento por selección</h2>
+        <p>
+          <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/SRC/programs/selection_sort.asm"><code>selection_sort.asm</code></a>
+          ordena de menor a mayor (con signo) un arreglo en la memoria de datos. Tiene 28 instrucciones, usa las 12 de la ISA
+          (formatos R, I y J), un ciclo doble, decisiones con <code>slt</code>, <code>beq</code> y <code>bne</code>, accesos
+          <code>lw</code>/<code>sw</code> y termina en el autosalto <code>fin: j fin</code> con el arreglo ya ordenado.
+        </p>
+        <div class="two-col">
+          <div>
+            <h3>Pseudocódigo</h3>
+<pre><code>N = Mem[0x0000]
+base = 0x0004
+for i = 0 to N - 2:
+    minIdx = i
+    for j = i + 1 to N - 1:
+        if A[j] &lt; A[minIdx]:     # slt, con signo
+            minIdx = j
+    if minIdx != i:
+        intercambiar A[i] y A[minIdx]   # lw / sw
+fin: goto fin</code></pre>
+            <p class="note"><code>A[k]</code> es la palabra en <code>0x0004 + 4k</code>. La ISA no tiene multiplicación: <code>i</code>, <code>j</code> y <code>minIdx</code> se manejan como desplazamientos en bytes (de 4 en 4) y <code>N × 4</code> se calcula con dos sumas.</p>
+          </div>
+          <div>
+            <h3>Mapa de registros</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Registro</th><th>Uso</th></tr></thead>
+                <tbody>
+                  <tr><td><code>$s0</code></td><td>Base del arreglo (4)</td></tr>
+                  <tr><td><code>$s1</code></td><td><code>N</code></td></tr>
+                  <tr><td><code>$s2</code></td><td><code>N × 4</code> (límite en bytes)</td></tr>
+                  <tr><td><code>$t0</code> / <code>$t1</code> / <code>$t2</code></td><td>Desplazamientos de <code>i</code>, <code>minIdx</code> y <code>j</code></td></tr>
+                  <tr><td><code>$t3</code> / <code>$t4</code></td><td>Direcciones y valores de <code>A[minIdx]</code> y <code>A[j]</code></td></tr>
+                  <tr><td><code>$t5</code></td><td>Resultado de <code>slt</code> / <code>minIdx − i</code></td></tr>
+                  <tr><td><code>$t6</code> / <code>$t7</code></td><td>Temporal del intercambio / dirección de <code>A[i]</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3>Mapa de memoria de datos</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Dirección</th><th>Contenido</th></tr></thead>
+                <tbody>
+                  <tr><td><code>0x0000</code></td><td><code>N</code> (≥ 1)</td></tr>
+                  <tr><td><code>0x0004 + 4k</code></td><td><code>A[k]</code>, palabra de 32 bits big-endian</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <p>Diseño completo (pseudocódigo por desplazamientos, bosquejo instrucción por instrucción y evolución por pasada): <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/DOCS/propuesta_algoritmo.md">propuesta del algoritmo</a>.</p>
       </section>
 
       <section id="pruebas">
-        <h2>5. Pruebas Reproducibles y Trazas (R, I, J)</h2>
-        <p><em>Sección en construcción (Alejandro Espinoza y Fares Khalifa — Día 7: tabla esperado vs observado y trazas).</em></p>
+        <h2><span class="num">6</span>Pruebas</h2>
+        <div class="stats">
+          <div class="stat"><span class="stat-value">111/111</span><span class="stat-label">pruebas automatizadas en verde</span></div>
+          <div class="stat"><span class="stat-value">3/3</span><span class="stat-label">entradas del algoritmo correctas</span></div>
+          <div class="stat"><span class="stat-value">R · I · J</span><span class="stat-label">trazas validadas contra la CPU</span></div>
+        </div>
+
+        <h3>Selection Sort: esperado vs observado</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Entrada</th><th>Memoria inicial</th><th>Esperado</th><th>Observado</th><th>Instrucciones</th><th>Ciclos</th><th>Resultado</th></tr></thead>
+            <tbody>
+              <tr><td>1 · Caso estándar</td><td><code>N = 5</code>, <code>[25, 4, 17, 1, 9]</code></td><td><code>[1, 4, 9, 17, 25]</code></td><td><code>[1, 4, 9, 17, 25]</code></td><td>138</td><td>690</td><td class="ok">✓ Correcto</td></tr>
+              <tr><td>2 · Negativos y duplicados</td><td><code>N = 5</code>, <code>[-3, 7, -3, 0, -10]</code></td><td><code>[-10, -3, -3, 0, 7]</code></td><td><code>[-10, -3, -3, 0, 7]</code></td><td>138</td><td>690</td><td class="ok">✓ Correcto</td></tr>
+              <tr><td>3 · Borde (<code>N = 1</code>)</td><td><code>N = 1</code>, <code>[42]</code></td><td><code>[42]</code></td><td><code>[42]</code></td><td>8</td><td>40</td><td class="ok">✓ Correcto</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Las tres terminan en el autosalto <code>fin</code> (<code>0x6C</code>). La entrada 2 confirma que <code>slt</code> compara con signo: sin signo, <code>−10 = 0xFFFFFFF6</code> quedaría al final.</p>
+
+        <h3>Suites automatizadas</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Archivo (<code>VERIF/tests/</code>)</th><th>Qué verifica</th><th>Pruebas</th></tr></thead>
+            <tbody>
+              <tr><td><code>smoke.test.ts</code></td><td>Contratos de la ISA, big-endian, alias de registros, extensiones y <code>$zero</code></td><td>6</td></tr>
+              <tr><td><code>assembler.test.ts</code></td><td>Codificación de las 12 instrucciones, etiquetas, <code>.hex</code>, listado y todos los diagnósticos</td><td>61</td></tr>
+              <tr><td><code>isa.test.ts</code></td><td>Ejecución de cada instrucción etapa por etapa, buffers, memorias y errores de PC</td><td>13</td></tr>
+              <tr><td><code>integration.test.ts</code></td><td>Casos de integración de la consigna, ensamblados desde texto</td><td>9</td></tr>
+              <tr><td><code>algorithm.test.ts</code></td><td>Selection Sort con las 3 entradas, instrucciones hasta <code>fin</code>, <code>.hex</code> actualizados y ejemplo tipo J</td><td>9</td></tr>
+              <tr><td><code>datapathView.test.ts</code></td><td>Modelo visual del datapath del simulador</td><td>9</td></tr>
+              <tr><td><code>traces.test.ts</code></td><td>Las trazas R, I y J coinciden con la ejecución real</td><td>4</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Casos que pide la consigna</h3>
+        <ul class="checklist">
+          <li>Al menos un caso por cada una de las 12 instrucciones</li>
+          <li>Los 4 bytes de búsqueda (<code>24 08 00 05</code>)</li>
+          <li>Escrituras a <code>$zero</code> descartadas</li>
+          <li>Extensión con signo (<code>addi</code> negativo) y con ceros (<code>ori 0xFFFF</code>)</li>
+          <li><code>lw</code>/<code>sw</code> big-endian</li>
+          <li>Ramas tomadas, no tomadas y rama hacia atrás</li>
+          <li><code>j</code> que omite una instrucción con efecto visible</li>
+          <li>Error del ensamblador con número de línea</li>
+          <li>Acceso de datos inválido (desalineado y fuera de rango) sin alterar el estado</li>
+        </ul>
+        <p>Detalle completo con la prueba que cubre cada caso: <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/VERIF/results/test_report.md">reporte de pruebas</a>.</p>
+      </section>
+
+      <section id="trazas">
+        <h2><span class="num">7</span>Trazas por formato</h2>
+        <p>Cada traza sigue una instrucción real de <code>selection_sort.asm</code> (entrada 1) por las 5 etapas: PC, 4 bytes, palabra, campos, 12 señales de control, contenido de los 4 buffers y estado antes y después. Se generan ejecutando la CPU y una prueba verifica que sigan coincidiendo.</p>
+        <div class="cards">
+          <article class="card">
+            <p class="card-tag"><span class="tag r">R</span> PC <code>0x30</code></p>
+            <h3><code>slt $t5, $t4, $t3</code></h3>
+            <p>Palabra <code>0x018B682A</code>. Compara <code>A[1] = 4</code> con <code>A[0] = 25</code> con signo (<code>ALUctl = 0111</code>) y escribe <strong><code>$t5 = 1</code></strong>.</p>
+            <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/VERIF/traces/traza_R.md">Ver traza R →</a>
+          </article>
+          <article class="card">
+            <p class="card-tag"><span class="tag i">I</span> PC <code>0x04</code></p>
+            <h3><code>lw $s1, 0($zero)</code></h3>
+            <p>Palabra <code>0x8C110000</code>. Dirección efectiva <code>0 + 0 = 0</code>; en MEM lee <code>N</code> y en WB escribe <strong><code>$s1 = 5</code></strong>.</p>
+            <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/VERIF/traces/traza_I.md">Ver traza I →</a>
+          </article>
+          <article class="card">
+            <p class="card-tag"><span class="tag j">J</span> PC <code>0x68</code></p>
+            <h3><code>j outer</code></h3>
+            <p>Palabra <code>0x08000005</code>. Destino <code>PC+4[31:28] · 5 · 00 = 0x14</code>: regresa a <code>outer</code> sin escribir registros ni memoria (<strong>PC <code>0x68 → 0x14</code></strong>).</p>
+            <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/VERIF/traces/traza_J.md">Ver traza J →</a>
+          </article>
+        </div>
       </section>
 
       <section id="reproduccion">
-        <h2>6. Guía de Reproducción, Referencias y Uso de IA</h2>
-        <ul>
-          <li><strong>MIPS 101</strong> — Nanyang Technological University (referencia visual e interactiva del datapath).</li>
-          <li><strong>Patterson &amp; Hennessy</strong> — <em>Computer Organization and Design</em>, 5.ª edición, capítulo 4.</li>
-          <li><strong>MIPS Technologies</strong> — <em>MIPS32 Architecture for Programmers</em>, volumen II.</li>
+        <h2><span class="num">8</span>Guía de reproducción</h2>
+        <ol class="steps">
+          <li>
+            <strong>Clonar e instalar</strong> (Node.js 20 o superior):
+<pre><code>git clone https://github.com/Joesnes/mips32-simulador-cucei.git
+cd mips32-simulador-cucei/SRC
+npm ci</code></pre>
+          </li>
+          <li>
+            <strong>Correr las pruebas</strong> (las mismas que corre GitHub Actions en cada Pull Request):
+<pre><code>npm run typecheck
+npm test
+npm run build</code></pre>
+          </li>
+          <li>
+            <strong>Regenerar la imagen cargable</strong> desde el ASM (escribe <code>.hex</code> con 1 byte por línea y <code>.lst</code> con el listado):
+<pre><code>npm run assemble -- programs/selection_sort.asm</code></pre>
+          </li>
+          <li>
+            <strong>Regenerar las trazas</strong> R, I y J:
+<pre><code>npx tsx ../VERIF/traces/generar_trazas.ts</code></pre>
+          </li>
+          <li>
+            <strong>Usar el simulador</strong>: abrir <a href="./simulador/">el simulador publicado</a> (o <code>npm run dev</code> en local), elegir <em>Selection Sort</em> y una de las 3 entradas, ensamblar y avanzar por etapa o por instrucción hasta <code>fin</code>.
+          </li>
+        </ol>
+      </section>
+
+      <section id="referencias">
+        <h2><span class="num">9</span>Referencias</h2>
+        <ul class="refs">
+          <li><strong>MIPS 101</strong> — Nanyang Technological University. Referencia visual de la ruta de datos paso a paso.</li>
+          <li><strong>D. A. Patterson y J. L. Hennessy</strong> — <em>Computer Organization and Design</em>, 5.ª edición, capítulo 4.</li>
+          <li><strong>MIPS Technologies</strong> — <em>MIPS32 Architecture for Programmers</em>, volumen II (codificación y formatos).</li>
+          <li><strong>Material del curso</strong> — Consigna del proyecto final y módulos de referencia <code>ALU.v</code>, <code>BR.v</code> y <code>BBVA.v</code> (<code>RTL/referencia/</code>).</li>
+          <li><strong>Software libre</strong> — React (MIT), TypeScript (Apache-2.0), Vite (MIT), Vitest (MIT), tsx (MIT).</li>
         </ul>
       </section>
 
+      <section id="ia">
+        <h2><span class="num">10</span>Declaración de uso de IA</h2>
+        <p>Conforme a la consigna, se declara por módulo la herramienta usada. El propósito, lo que se incorporó o descartó y cómo se comprobó cada aporte están en la <a href="https://github.com/Joesnes/mips32-simulador-cucei/blob/main/DOCS/declaracion_ia.md">declaración completa</a>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Módulo</th><th>Responsable</th><th>Herramienta</th></tr></thead>
+            <tbody>
+              <tr><td>Arquitectura, contratos ISA y CI/CD</td><td>Alejandro Espinoza</td><td>Antigravity (Gemini)</td></tr>
+              <tr><td>Núcleo CPU, memorias y pruebas de integración</td><td>Alejandro Espinoza</td><td>Antigravity (Gemini)</td></tr>
+              <tr><td>Visualizador del datapath e interfaz del simulador</td><td>Alejandro Espinoza</td><td>Antigravity (Gemini / Orchestrator)</td></tr>
+              <tr><td>Ensamblador y CLI de imágenes</td><td>Fares Khalifa</td><td>Claude (Anthropic), mediante Claude Code</td></tr>
+              <tr><td>Algoritmo, ejemplos y datasets</td><td>Fares Khalifa</td><td>Claude (Anthropic), mediante Claude Code</td></tr>
+              <tr><td>Trazas, reporte de pruebas y reporte técnico</td><td>Fares Khalifa</td><td>Claude (Anthropic), mediante Claude Code</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section id="conclusiones">
-        <h2>7. Conclusiones Individuales</h2>
-        <p><em>Pendiente de cierre (Día 8).</em></p>
+        <h2><span class="num">11</span>Conclusiones individuales</h2>
+        <div class="cards two">
+          <article class="card">
+            <h3>Alejandro Espinoza</h3>
+            <p class="pending">Pendiente (Día 8).</p>
+          </article>
+          <article class="card">
+            <h3>Fares Khalifa</h3>
+            <p class="pending">Pendiente (Día 8).</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="cta-final">
+        <h2>Pruébalo</h2>
+        <p>Ensambla Selection Sort, elige una entrada y avanza etapa por etapa.</p>
+        <a class="btn-primary btn-large" href="./simulador/">Abrir el simulador <span aria-hidden="true">→</span></a>
       </section>
     </main>
 
     <footer class="footer">
       <div class="container">
-        <p>Proyecto Final de Arquitectura de Computadoras — UdeG / CUCEI · Modalidad B</p>
+        <p>Proyecto final de Arquitectura de Computadoras · Universidad de Guadalajara, CUCEI · Modalidad B</p>
+        <p><a href="https://github.com/Joesnes/mips32-simulador-cucei">github.com/Joesnes/mips32-simulador-cucei</a></p>
       </div>
     </footer>
   </body>
