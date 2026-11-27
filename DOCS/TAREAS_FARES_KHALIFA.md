@@ -85,25 +85,19 @@ REGLAS ESTRICTAS DEL REPOSITORIO (NO ROMPER):
   3. Crear `SRC/programs/examples/tipo_r.asm`, `tipo_i.asm`, `tipo_j.asm` y `SRC/programs/datasets.json` con las 3 entradas (estándar, negativos/duplicados, borde 1 elemento).
   4. Crear `VERIF/tests/algorithm.test.ts` que ensamble `selection_sort.asm`, cargue cada dataset en `MipsCpu` y compruebe que la memoria final coincide con la esperada.
 
-### Día 5 (26) — UI: Editor, Presets e Inspector de Instrucción
-- **Rama:** `feat/ui-editor-inspector`
-- **Entregable:**
-  1. Completar `EditorControls.tsx`: selector de ejemplos (`tipo_r`, `tipo_i`, `tipo_j`, `selection_sort`), selector de las 3 entradas de `datasets.json`, botón de exportar imagen `.hex` (descarga de archivo), botones de Play/Pausa con velocidad ajustable, y tabla clara de diagnósticos por línea.
-  2. Completar `InstructionInspector.tsx`: mostrar los 32 bits de la instrucción actual desglosados por campos con colores según formato (R/I/J), los 4 bytes big-endian leídos y el listado ensamblado resaltando la fila del `PC` actual.
+### Días 5–6 (26–27) — *(Actualizado)* Trazas I/J, Reporte de Pruebas y Declaración de IA
+> **Nota importante (NO sobreescribir UI):** Para mantener coherencia visual 100% en tema oscuro estilo Apple y formato exclusivo **Binario y Decimal**, Alejandro Espinoza ya unificó en el PR #10 los componentes del simulador (`EditorControls.tsx`, `InstructionInspector.tsx`, `MemoryRegistersPanel.tsx`, `DatapathSVG.tsx`, `ControlSignalsPanel.tsx`). **No edites `SRC/simulator/*`** salvo que acordemos algún ajuste puntual; tu carga equivalente de Días 5–7 pasa a las trazas, pruebas documentadas y Reporte Técnico para mantener el 50/50 en GitHub.
 
-### Día 6 (27) — UI: Banco de Registros y Memorias con Resaltado
-- **Rama:** `feat/ui-memory-registers`
+- **Rama:** `docs/trazas-y-resultados`
 - **Entregable:**
-  1. Completar `MemoryRegistersPanel.tsx` con pestañas o columnas claras:
-     - **32 Registros (`$0`–`$31`):** nombre, alias, hex y decimal con signo, resaltando el registro recién modificado (`snapshot.lastChange?.registerChanged`).
-     - **Memoria de Instrucciones:** vista byte a byte (big-endian) resaltando los 4 bytes `[PC..PC+3]`.
-     - **Memoria de Datos:** vista por palabras de 32 bits y por bytes big-endian, resaltando la dirección modificada (`sw`) y mostrando alerta visible si `snapshot.error` está activo.
+  1. Redactar `VERIF/traces/traza_I.md` (una instrucción Tipo I real de nuestro programa, ej. `lw` o `beq`: PC, 4 bytes Big-Endian en binario/hex, palabra de 32 bits, campos, las 12 señales de control, contenido de los 4 buffers `IF/ID..MEM/WB` y estado antes/después) y `VERIF/traces/traza_J.md` (instrucción `j` con todos los mismos campos).
+  2. Redactar `VERIF/results/test_report.md` con el resumen reproducible de `npm test` (107/107 pruebas) y la tabla **Esperado vs Observado** para las 3 entradas de Selection Sort + cómo reproducir cada prueba.
+  3. **Completar tus 3 filas pendientes en `DOCS/declaracion_ia.md`** (herramienta de IA usada, propósito general y aportes incorporados/descartados en tus módulos).
 
-### Día 7 (28) — Reporte Técnico Estático y Trazas I / J
-- **Rama:** `docs/reporte-y-trazas`
+### Día 7 (28) — Reporte Técnico Estático Completo (`DOCS/site/`)
+- **Rama:** `docs/reporte-sitio`
 - **Entregable:**
-  1. Completar `DOCS/site/index.html` y `DOCS/site/styles.css` con todas las secciones obligatorias del reporte (introducción, objetivos, tabla de 12 instrucciones, pseudocódigo y mapa de Selection Sort, pruebas y tabla esperado vs observado de las 3 entradas, guía reproducible, referencias, declaración de IA, conclusiones y botón grande al simulador `./simulador/`).
-  2. Redactar `VERIF/traces/traza_I.md`, `VERIF/traces/traza_J.md` y `VERIF/results/test_report.md`.
+  1. Construir el sitio estático completo en `DOCS/site/index.html` y `DOCS/site/styles.css` (con estética oscura limpia coherente con el simulador y botón principal visible hacia `./simulador/`) incluyendo: introducción y objetivos, tabla completa de las 12 instrucciones (opcodes/functs/señales), algoritmo Selection Sort (pseudocódigo, mapa de registros y memoria), tabla de pruebas y las 3 entradas (esperado vs observado), resumen de trazas R/I/J, guía de reproducción paso a paso, referencias (`MIPS 101`, Patterson & Hennessy 5.ª ed., MIPS32 Vol. II), declaración de uso de IA y bloque listo para las conclusiones individuales. *(Deja un espacio/contenedor en la sección de Arquitectura para los diagramas SVG que Alejandro agregará en `DOCS/site/assets/`.)*
 
 ### Día 8 (29–30) — Evidencia Individual y Ensayo de Defensa
 - **Rama:** `docs/ficha-fares-khalifa`
