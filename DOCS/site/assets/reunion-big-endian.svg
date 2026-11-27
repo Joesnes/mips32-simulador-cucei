@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 420" width="1120" height="420" role="img" aria-label="Reunión Big-Endian de 4 bytes antes de decodificar addiu $t0, $zero, 5">
+  <defs>
+    <style>
+      .bg { fill: #07090e; }
+      .card { fill: #121826; stroke: #334155; stroke-width: 1.5; }
+      .byte { fill: #10243d; stroke: #0A84FF; stroke-width: 1.6; }
+      .op { fill: #251538; stroke: #BF5AF2; stroke-width: 1.5; }
+      .reg { fill: #10243d; stroke: #38bdf8; stroke-width: 1.5; }
+      .imm { fill: #2b1d0c; stroke: #FF9F0A; stroke-width: 1.5; }
+      .res { fill: #0f2619; stroke: #30D158; stroke-width: 1.6; }
+      .h1 { fill: #f8fafc; font: 700 17px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .sub { fill: #94a3b8; font: 500 11.5px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .lbl { fill: #cbd5e1; font: 600 11px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .mono { fill: #f8fafc; font: 700 13px Consolas, monospace; }
+      .mono-sm { fill: #7dd3fc; font: 600 11px Consolas, monospace; }
+      .arrow { fill: none; stroke: #64748b; stroke-width: 2; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1120" height="420" rx="16"/>
+  <text x="28" y="36" class="h1">Reunión Big-Endian de 4 Bytes y Decodificación — Ejemplo: addiu $t0, $zero, 5</text>
+  <text x="28" y="56" class="sub">Cómo 4 direcciones consecutivas de 1 byte en IMem se concatenan en IR[31:0] antes de generar señales de control</text>
+
+  <!-- Step 1: 4 bytes in IMem -->
+  <text x="28" y="92" class="lbl">1. Lectura en Memoria de Instrucciones (PC = byte 0, orden Big-Endian: MSB primero)</text>
+
+  <rect x="28" y="104" width="248" height="72" rx="10" class="byte"/>
+  <text x="152" y="124" text-anchor="middle" class="sub">mem[PC + 0] = mem[0] → bits [31:24]</text>
+  <text x="152" y="146" text-anchor="middle" class="mono">00100100</text>
+  <text x="152" y="164" text-anchor="middle" class="mono-sm">Decimal: 36 · Hex: 0x24</text>
+
+  <rect x="296" y="104" width="248" height="72" rx="10" class="byte"/>
+  <text x="420" y="124" text-anchor="middle" class="sub">mem[PC + 1] = mem[1] → bits [23:16]</text>
+  <text x="420" y="146" text-anchor="middle" class="mono">00001000</text>
+  <text x="420" y="164" text-anchor="middle" class="mono-sm">Decimal: 8 · Hex: 0x08</text>
+
+  <rect x="564" y="104" width="248" height="72" rx="10" class="byte"/>
+  <text x="688" y="124" text-anchor="middle" class="sub">mem[PC + 2] = mem[2] → bits [15:8]</text>
+  <text x="688" y="146" text-anchor="middle" class="mono">00000000</text>
+  <text x="688" y="164" text-anchor="middle" class="mono-sm">Decimal: 0 · Hex: 0x00</text>
+
+  <rect x="832" y="104" width="260" height="72" rx="10" class="byte"/>
+  <text x="962" y="124" text-anchor="middle" class="sub">mem[PC + 3] = mem[3] → bits [7:0]</text>
+  <text x="962" y="146" text-anchor="middle" class="mono">00000101</text>
+  <text x="962" y="164" text-anchor="middle" class="mono-sm">Decimal: 5 · Hex: 0x05</text>
+
+  <!-- Down Arrows -->
+  <path class="arrow" marker-end="url(#a)" d="M 560 176 L 560 206"/>
+
+  <!-- Step 2: 32-bit word split by I-type fields -->
+  <text x="28" y="218" class="lbl">2. Palabra reunida IR[31:0] = 0x24080005 y separación en campos Formato I (etapa ID)</text>
+
+  <rect x="28" y="230" width="210" height="74" rx="10" class="op"/>
+  <text x="133" y="250" text-anchor="middle" class="sub">opcode [31:26] (6 bits)</text>
+  <text x="133" y="272" text-anchor="middle" class="mono">001001</text>
+  <text x="133" y="292" text-anchor="middle" class="mono-sm">Decimal: 9 (0x09 → addi/addiu)</text>
+
+  <rect x="252" y="230" width="180" height="74" rx="10" class="reg"/>
+  <text x="342" y="250" text-anchor="middle" class="sub">rs [25:21] (5 bits)</text>
+  <text x="342" y="272" text-anchor="middle" class="mono">00000</text>
+  <text x="342" y="292" text-anchor="middle" class="mono-sm">Registro 0 ($zero = 0)</text>
+
+  <rect x="446" y="230" width="180" height="74" rx="10" class="reg"/>
+  <text x="536" y="250" text-anchor="middle" class="sub">rt [20:16] (5 bits)</text>
+  <text x="536" y="272" text-anchor="middle" class="mono">01000</text>
+  <text x="536" y="292" text-anchor="middle" class="mono-sm">Registro 8 ($t0 destino)</text>
+
+  <rect x="640" y="230" width="452" height="74" rx="10" class="imm"/>
+  <text x="866" y="250" text-anchor="middle" class="sub">imm16 [15:0] (16 bits — extendido con signo a 32 bits)</text>
+  <text x="866" y="272" text-anchor="middle" class="mono">0000000000000101</text>
+  <text x="866" y="292" text-anchor="middle" class="mono-sm">Decimal con signo: +5</text>
+
+  <!-- Down Arrow -->
+  <path class="arrow" marker-end="url(#a)" d="M 560 304 L 560 334"/>
+
+  <!-- Step 3: Control + Result -->
+  <rect x="28" y="338" width="1064" height="60" rx="10" class="res"/>
+  <text x="48" y="362" class="lbl" fill="#86efac">3. Señales activas y cambio verificable al cerrar WB:</text>
+  <text x="48" y="384" class="mono-sm" fill="#e2e8f0">RegDst=0 (rt) · ALUSrc=1 (Imm) · ExtOp=SIGN · ALUOp=00 → ALUctl=0010 (ADD) · RegWrite=1  ⇒  ALU: 0 + 5 = 5  ⇒  $t0 = 5, PC = 4</text>
+</svg>
