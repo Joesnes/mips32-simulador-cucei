@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 430" width="1120" height="430" role="img" aria-label="Registros intermedios y ciclos de carga del diseño multiciclo">
+  <defs>
+    <style>
+      .bg { fill: #07090e; }
+      .card { fill: #121826; stroke: #334155; stroke-width: 1.5; }
+      .c1 { stroke: #0A84FF; }
+      .c2 { stroke: #BF5AF2; }
+      .c3 { stroke: #FF9F0A; }
+      .c4 { stroke: #30D158; }
+      .h1 { fill: #f8fafc; font: 700 17px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .sub { fill: #94a3b8; font: 500 11.5px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .title { fill: #f8fafc; font: 700 13.5px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .tag { fill: #7dd3fc; font: 700 10.5px Consolas, monospace; }
+      .row { fill: #cbd5e1; font: 500 11px Consolas, monospace; }
+      .foot { fill: #86efac; font: 600 11px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .arr { fill: none; stroke: #64748b; stroke-width: 2; }
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1120" height="430" rx="16"/>
+  <text x="28" y="36" class="h1">Registros Intermedios (Buffers) — Anchos, Carga, Validez y Reset</text>
+  <text x="28" y="56" class="sub">Modelo multiciclo (1 instrucción activa a la vez): cada buffer se habilita al concluir su etapa y se invalida al iniciar la siguiente instrucción o al reiniciar</text>
+
+  <!-- Buffer 1: IF/ID -->
+  <rect x="28" y="84" width="244" height="252" rx="12" class="card c1"/>
+  <text x="46" y="112" class="title">1. Buffer IF / ID</text>
+  <text x="46" y="132" class="tag">Habilitación: Ciclo 1 (IF)</text>
+  <text x="46" y="160" class="row">• valid        (1 bit)</text>
+  <text x="46" y="182" class="row">• pc           (32 bits)</text>
+  <text x="46" y="204" class="row">• pcPlus4      (32 bits)</text>
+  <text x="46" y="226" class="row">• bytes[0..3]  (4 × 8 bits)</text>
+  <text x="46" y="248" class="row">• instruction  (32 bits)</text>
+  <text x="46" y="294" class="sub">Reset: valid=false, campos=0</text>
+  <text x="46" y="314" class="sub">Al iniciar IF: invalida ID/EX..MEM/WB</text>
+
+  <path class="arr" marker-end="url(#ar)" d="M 272 210 L 298 210"/>
+
+  <!-- Buffer 2: ID/EX -->
+  <rect x="302" y="84" width="244" height="252" rx="12" class="card c2"/>
+  <text x="320" y="112" class="title">2. Buffer ID / EX</text>
+  <text x="320" y="132" class="tag">Habilitación: Ciclo 2 (ID)</text>
+  <text x="320" y="160" class="row">• valid        (1 bit)</text>
+  <text x="320" y="182" class="row">• fields       (op,rs,rt,rd,fn,imm)</text>
+  <text x="320" y="204" class="row">• A = DR1      (32 bits)</text>
+  <text x="320" y="226" class="row">• B = DR2      (32 bits)</text>
+  <text x="320" y="248" class="row">• immExt       (32 bits)</text>
+  <text x="320" y="270" class="row">• ctrl         (12 señales)</text>
+  <text x="320" y="304" class="sub">Reset: valid=false, ctrl inactivo</text>
+
+  <path class="arr" marker-end="url(#ar)" d="M 546 210 L 572 210"/>
+
+  <!-- Buffer 3: EX/MEM -->
+  <rect x="576" y="84" width="244" height="252" rx="12" class="card c3"/>
+  <text x="594" y="112" class="title">3. Buffer EX / MEM</text>
+  <text x="594" y="132" class="tag">Habilitación: Ciclo 3 (EX)</text>
+  <text x="594" y="160" class="row">• valid        (1 bit)</text>
+  <text x="594" y="182" class="row">• aluResult    (32 bits)</text>
+  <text x="594" y="204" class="row">• zero (ZF)    (1 bit)</text>
+  <text x="594" y="226" class="row">• writeData    (32 bits, DR2)</text>
+  <text x="594" y="248" class="row">• writeReg AW  (5 bits)</text>
+  <text x="594" y="270" class="row">• nextPC       (32 bits)</text>
+  <text x="594" y="292" class="row">• branchTaken  (1 bit)</text>
+  <text x="594" y="316" class="sub">Reset: valid=false, campos=0</text>
+
+  <path class="arr" marker-end="url(#ar)" d="M 820 210 L 846 210"/>
+
+  <!-- Buffer 4: MEM/WB -->
+  <rect x="850" y="84" width="244" height="252" rx="12" class="card c4"/>
+  <text x="868" y="112" class="title">4. Buffer MEM / WB</text>
+  <text x="868" y="132" class="tag">Habilitación: Ciclo 4 (MEM)</text>
+  <text x="868" y="160" class="row">• valid         (1 bit)</text>
+  <text x="868" y="182" class="row">• memReadData   (32 bits, MDR)</text>
+  <text x="868" y="204" class="row">• aluResult     (32 bits)</text>
+  <text x="868" y="226" class="row">• writeBackData (32 bits, Dw)</text>
+  <text x="868" y="248" class="row">• writeReg AW   (5 bits)</text>
+  <text x="868" y="270" class="row">• nextPC        (32 bits)</text>
+  <text x="868" y="304" class="sub">Ciclo 5 (WB): escribe BR[AW]</text>
+  <text x="868" y="320" class="sub">(si RegWrite=1 y AW≠0) y PC←nextPC</text>
+
+  <!-- Timeline Footer Bar -->
+  <rect x="28" y="356" width="1066" height="50" rx="10" class="card"/>
+  <text x="48" y="378" class="foot">Seguridad ante errores (sin corrupción de estado):</text>
+  <text x="48" y="396" class="sub">Si ocurre PC_OUT_OF_RANGE / PC_UNALIGNED en IF, UNKNOWN_INSTRUCTION en ID o DATA_OUT_OF_RANGE / DATA_UNALIGNED en MEM, la CPU pasa a estado ERROR sin avanzar a WB ni modificar registros o DMem.</text>
+</svg>

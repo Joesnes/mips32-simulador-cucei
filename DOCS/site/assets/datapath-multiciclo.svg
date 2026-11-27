@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 680" width="1320" height="680" role="img" aria-label="Diagrama propio de la ruta de datos MIPS32 multiciclo de 5 etapas">
+  <defs>
+    <style>
+      .bg { fill: #07090e; }
+      .zone { fill: #0d111a; stroke: #1f2937; stroke-width: 1.2; }
+      .box { fill: #131926; stroke: #334155; stroke-width: 1.6; }
+      .box-accent { fill: #10203a; stroke: #0A84FF; stroke-width: 1.8; }
+      .box-ctrl { fill: #1f1330; stroke: #BF5AF2; stroke-width: 1.6; }
+      .box-alu { fill: #261b0e; stroke: #FF9F0A; stroke-width: 1.8; }
+      .box-mem { fill: #0d2229; stroke: #64D2FF; stroke-width: 1.6; }
+      .mux { fill: #171d2b; stroke: #64748b; stroke-width: 1.5; }
+      .buf { fill: #0f2518; stroke: #30D158; stroke-width: 1.8; }
+      .wire { fill: none; stroke: #60a5fa; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-ctrl { fill: none; stroke: #c084fc; stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-flow { fill: none; stroke: #fbbf24; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-wb { fill: none; stroke: #34d399; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .h1 { fill: #f8fafc; font: 700 18px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .sub { fill: #94a3b8; font: 500 11.5px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .stage { fill: #e2e8f0; font: 700 12px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .title { fill: #f8fafc; font: 700 12.5px system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .lbl { fill: #cbd5e1; font: 500 10.5px Consolas, monospace; }
+      .bit { fill: #7dd3fc; font: 700 9.5px Consolas, monospace; }
+      .ctrl-txt { fill: #d8b4fe; font: 600 9.8px Consolas, monospace; }
+      .buf-txt { fill: #86efac; font: 700 11px Consolas, monospace; letter-spacing: 0.05em; }
+    </style>
+    <marker id="arr-b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#60a5fa"/>
+    </marker>
+    <marker id="arr-p" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#c084fc"/>
+    </marker>
+    <marker id="arr-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#34d399"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1320" height="680" rx="16"/>
+
+  <!-- Header -->
+  <text x="28" y="34" class="h1">Arquitectura del Datapath MIPS32 — Multiciclo de 5 Etapas (1 instrucción activa)</text>
+  <text x="28" y="54" class="sub">Anchos de bus, reunión obligatoria Big-Endian de 4 bytes antes de decodificar, 12 señales de control y 4 buffers intermedios</text>
+
+  <!-- Stage Zones -->
+  <rect x="20" y="72" width="232" height="538" rx="12" class="zone"/>
+  <rect x="304" y="72" width="308" height="538" rx="12" class="zone"/>
+  <rect x="664" y="72" width="292" height="538" rx="12" class="zone"/>
+  <rect x="1008" y="72" width="150" height="538" rx="12" class="zone"/>
+  <rect x="1210" y="72" width="90" height="538" rx="12" class="zone"/>
+
+  <!-- Stage Headers -->
+  <text x="136" y="95" text-anchor="middle" class="stage">1 · IF (Búsqueda)</text>
+  <text x="458" y="95" text-anchor="middle" class="stage">2 · ID (Decodificación)</text>
+  <text x="810" y="95" text-anchor="middle" class="stage">3 · EX (Ejecución)</text>
+  <text x="1083" y="95" text-anchor="middle" class="stage">4 · MEM</text>
+  <text x="1255" y="95" text-anchor="middle" class="stage">5 · WB</text>
+
+  <!-- ================= STAGE 1: IF ================= -->
+  <rect x="32" y="256" width="68" height="84" rx="10" class="box"/>
+  <text x="66" y="290" text-anchor="middle" class="title">PC</text>
+  <text x="66" y="308" text-anchor="middle" class="bit">32 bits</text>
+  <text x="66" y="324" text-anchor="middle" class="lbl">Reset=0</text>
+
+  <rect x="128" y="128" width="110" height="58" rx="10" class="box"/>
+  <text x="183" y="152" text-anchor="middle" class="title">Sumador +4</text>
+  <text x="183" y="170" text-anchor="middle" class="lbl">PC + 4 (32b)</text>
+
+  <rect x="128" y="232" width="110" height="106" rx="10" class="box"/>
+  <text x="183" y="258" text-anchor="middle" class="title">IMem</text>
+  <text x="183" y="276" text-anchor="middle" class="sub">1 byte / dir.</text>
+  <text x="183" y="296" text-anchor="middle" class="lbl">mem[PC..PC+3]</text>
+  <text x="183" y="316" text-anchor="middle" class="bit">Valida PC%4==0</text>
+
+  <rect x="122" y="376" width="122" height="118" rx="10" class="box-accent"/>
+  <text x="183" y="398" text-anchor="middle" class="title">Reunión 4 Bytes</text>
+  <text x="183" y="414" text-anchor="middle" class="sub">Big-Endian → 32b</text>
+  <text x="183" y="436" text-anchor="middle" class="lbl">b0[31:24] b1[23:16]</text>
+  <text x="183" y="454" text-anchor="middle" class="lbl">b2[15:8]  b3[7:0]</text>
+  <text x="183" y="476" text-anchor="middle" class="bit">IR [31:0] antes de ID</text>
+
+  <!-- Buffer IF/ID -->
+  <rect x="262" y="106" width="32" height="486" rx="8" class="buf"/>
+  <text x="278" y="350" text-anchor="middle" transform="rotate(-90 278 350)" class="buf-txt">IF / ID (Carga al final de IF)</text>
+
+  <!-- ================= STAGE 2: ID ================= -->
+  <rect x="316" y="236" width="114" height="224" rx="10" class="box"/>
+  <text x="373" y="260" text-anchor="middle" class="title">Campos IR</text>
+  <text x="326" y="286" class="lbl">[31:26] op (6b)</text>
+  <text x="326" y="308" class="lbl">[25:21] rs (5b)</text>
+  <text x="326" y="330" class="lbl">[20:16] rt (5b)</text>
+  <text x="326" y="352" class="lbl">[15:11] rd (5b)</text>
+  <text x="326" y="374" class="lbl">[10:6]  sh (5b)</text>
+  <text x="326" y="396" class="lbl">[5:0]   fn (6b)</text>
+  <text x="326" y="418" class="lbl">[15:0]  imm(16b)</text>
+  <text x="326" y="440" class="lbl">[25:0]  idx(26b)</text>
+
+  <rect x="454" y="118" width="144" height="106" rx="10" class="box-ctrl"/>
+  <text x="526" y="140" text-anchor="middle" class="title">Unidad de Control</text>
+  <text x="526" y="158" text-anchor="middle" class="ctrl-txt">RegDst ALUSrc ExtOp</text>
+  <text x="526" y="175" text-anchor="middle" class="ctrl-txt">MemToReg RegWrite</text>
+  <text x="526" y="192" text-anchor="middle" class="ctrl-txt">MemRead MemWrite</text>
+  <text x="526" y="209" text-anchor="middle" class="ctrl-txt">Branch BranchNe Jump</text>
+
+  <rect x="454" y="248" width="144" height="178" rx="10" class="box"/>
+  <text x="526" y="270" text-anchor="middle" class="title">Banco Registros (BR)</text>
+  <text x="526" y="286" text-anchor="middle" class="sub">32 × 32b ($0 fijo = 0)</text>
+  <text x="464" y="310" class="lbl">AR1 (5b)</text>
+  <text x="464" y="330" class="lbl">AR2 (5b)</text>
+  <text x="464" y="350" class="lbl">AW  (5b)</text>
+  <text x="464" y="370" class="lbl">Dw (32b)</text>
+  <text x="590" y="324" text-anchor="end" class="bit">DR1 (32b)</text>
+  <text x="590" y="362" text-anchor="end" class="bit">DR2 (32b)</text>
+  <text x="526" y="408" text-anchor="middle" class="ctrl-txt">we = RegWrite (1b)</text>
+
+  <rect x="454" y="452" width="144" height="74" rx="10" class="box"/>
+  <text x="526" y="476" text-anchor="middle" class="title">Extensor 16→32b</text>
+  <text x="526" y="494" text-anchor="middle" class="ctrl-txt">ExtOp: SIGN | ZERO</text>
+  <text x="526" y="512" text-anchor="middle" class="bit">immExt (32b)</text>
+
+  <!-- Buffer ID/EX -->
+  <rect x="622" y="106" width="32" height="486" rx="8" class="buf"/>
+  <text x="638" y="350" text-anchor="middle" transform="rotate(-90 638 350)" class="buf-txt">ID / EX (Carga al final de ID)</text>
+
+  <!-- ================= STAGE 3: EX ================= -->
+  <rect x="676" y="116" width="110" height="48" rx="8" class="box"/>
+  <text x="731" y="137" text-anchor="middle" class="title">Jump Target</text>
+  <text x="731" y="153" text-anchor="middle" class="lbl">PC+4[31:28]||idx&lt;&lt;2</text>
+
+  <rect x="676" y="178" width="128" height="58" rx="8" class="box"/>
+  <text x="740" y="199" text-anchor="middle" class="title">Sumador Branch</text>
+  <text x="740" y="216" text-anchor="middle" class="lbl">PC+4 + (imm&lt;&lt;2)</text>
+
+  <rect x="836" y="142" width="44" height="74" rx="8" class="mux"/>
+  <text x="858" y="160" text-anchor="middle" class="lbl">0:PC4</text>
+  <text x="858" y="182" text-anchor="middle" class="title">PCSrc</text>
+  <text x="858" y="204" text-anchor="middle" class="lbl">1:Br</text>
+
+  <rect x="898" y="122" width="44" height="74" rx="8" class="mux"/>
+  <text x="920" y="140" text-anchor="middle" class="lbl">1:Jmp</text>
+  <text x="920" y="162" text-anchor="middle" class="title">Jump</text>
+  <text x="920" y="184" text-anchor="middle" class="lbl">0:Br</text>
+
+  <rect x="688" y="330" width="42" height="76" rx="8" class="mux"/>
+  <text x="709" y="348" text-anchor="middle" class="lbl">0:B</text>
+  <text x="709" y="370" text-anchor="middle" class="title">ALUSrc</text>
+  <text x="709" y="394" text-anchor="middle" class="lbl">1:Imm</text>
+
+  <polygon points="756,282 886,308 886,406 756,432 756,376 778,357 756,338" class="box-alu"/>
+  <text x="822" y="352" text-anchor="middle" class="title">MIPSALU</text>
+  <text x="822" y="370" text-anchor="middle" class="lbl">32 bits</text>
+  <text x="764" y="312" class="lbl">A</text>
+  <text x="764" y="410" class="lbl">B</text>
+  <text x="878" y="330" text-anchor="end" class="bit">Zero</text>
+  <text x="878" y="392" text-anchor="end" class="bit">ALUOut</text>
+
+  <rect x="760" y="458" width="122" height="58" rx="10" class="box-ctrl"/>
+  <text x="821" y="480" text-anchor="middle" class="title">ALU Control</text>
+  <text x="821" y="498" text-anchor="middle" class="ctrl-txt">ALUOp(2b)+funct→4b</text>
+
+  <rect x="688" y="522" width="46" height="66" rx="8" class="mux"/>
+  <text x="711" y="540" text-anchor="middle" class="lbl">0:rt</text>
+  <text x="711" y="558" text-anchor="middle" class="title">RegDst</text>
+  <text x="711" y="576" text-anchor="middle" class="lbl">1:rd</text>
+
+  <!-- Buffer EX/MEM -->
+  <rect x="966" y="106" width="32" height="486" rx="8" class="buf"/>
+  <text x="982" y="350" text-anchor="middle" transform="rotate(-90 982 350)" class="buf-txt">EX / MEM (Carga al final de EX)</text>
+
+  <!-- ================= STAGE 4: MEM ================= -->
+  <rect x="1020" y="294" width="126" height="156" rx="10" class="box-mem"/>
+  <text x="1083" y="320" text-anchor="middle" class="title">Memoria Datos</text>
+  <text x="1083" y="338" text-anchor="middle" class="sub">DMem · Big-Endian</text>
+  <text x="1030" y="366" class="lbl">Addr (32b)</text>
+  <text x="1030" y="388" class="lbl">WData (32b)</text>
+  <text x="1083" y="414" text-anchor="middle" class="bit">MDR (32b)</text>
+  <text x="1083" y="434" text-anchor="middle" class="ctrl-txt">Valida rango y %4</text>
+
+  <!-- Buffer MEM/WB -->
+  <rect x="1168" y="106" width="32" height="486" rx="8" class="buf"/>
+  <text x="1184" y="350" text-anchor="middle" transform="rotate(-90 1184 350)" class="buf-txt">MEM / WB (Carga al final de MEM)</text>
+
+  <!-- ================= STAGE 5: WB ================= -->
+  <rect x="1226" y="316" width="54" height="84" rx="8" class="mux"/>
+  <text x="1253" y="338" text-anchor="middle" class="lbl">0:ALU</text>
+  <text x="1253" y="360" text-anchor="middle" class="title">M2Reg</text>
+  <text x="1253" y="384" text-anchor="middle" class="lbl">1:MDR</text>
+
+  <!-- ================= WIRES ================= -->
+  <path class="wire" marker-end="url(#arr-b)" d="M 100 298 L 126 298"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 110 298 L 110 157 L 126 157"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 238 157 L 260 157"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 183 338 L 183 374"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 244 435 L 260 435"/>
+
+  <path class="wire" marker-end="url(#arr-b)" d="M 294 348 L 314 348"/>
+  <path class="wire-ctrl" marker-end="url(#arr-p)" d="M 430 282 L 442 282 L 442 172 L 452 172"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 430 318 L 452 318"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 430 416 L 442 416 L 442 489 L 452 489"/>
+  <path class="wire-ctrl" marker-end="url(#arr-p)" d="M 598 172 L 620 172"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 598 336 L 620 336"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 598 489 L 620 489"/>
+
+  <path class="wire" marker-end="url(#arr-b)" d="M 654 312 L 754 312"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 654 348 L 686 348"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 654 489 L 672 489 L 672 390 L 686 390"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 730 370 L 754 370"/>
+  <path class="wire-ctrl" marker-end="url(#arr-p)" d="M 821 458 L 821 420"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 886 376 L 964 376"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 734 555 L 964 555"/>
+  <path class="wire-flow" marker-end="url(#arr-o)" d="M 786 140 L 896 140"/>
+  <path class="wire-flow" marker-end="url(#arr-o)" d="M 804 202 L 834 202"/>
+  <path class="wire-flow" marker-end="url(#arr-o)" d="M 880 179 L 896 179"/>
+  <path class="wire-flow" marker-end="url(#arr-o)" d="M 942 159 L 964 159"/>
+
+  <path class="wire" marker-end="url(#arr-b)" d="M 998 362 L 1018 362"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 998 386 L 1018 386"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 1146 374 L 1166 374"/>
+  <path class="wire" marker-end="url(#arr-b)" d="M 998 258 L 1166 258"/>
+  <text x="1083" y="250" text-anchor="middle" class="bit">Bypass ALUOut (32b)</text>
+
+  <path class="wire-wb" marker-end="url(#arr-g)" d="M 1200 336 L 1224 336"/>
+  <path class="wire-wb" marker-end="url(#arr-g)" d="M 1200 380 L 1224 380"/>
+  <path class="wire-wb" marker-end="url(#arr-g)" d="M 1280 358 L 1294 358 L 1294 632 L 438 632 L 438 368 L 452 368"/>
+  <text x="860" y="625" text-anchor="middle" class="buf-txt">Retorno WB: Dw (32b) + AW (5b) → Banco de Registros (si RegWrite=1 y AW≠0)</text>
+
+  <path class="wire-flow" marker-end="url(#arr-o)" d="M 1184 106 L 1184 62 L 66 62 L 66 254"/>
+  <text x="640" y="57" text-anchor="middle" class="lbl" fill="#fbbf24">Retorno WB: nextPC (32b) → PC</text>
+
+  <!-- Footer Legend -->
+  <text x="28" y="662" class="sub">Referencias: Patterson &amp; Hennessy (5.ª ed., cap. 4), MIPS 101 (NTU) y módulos base de clase (ALU.v / BR.v). Elaboración propia — Modalidad B.</text>
+</svg>
