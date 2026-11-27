@@ -48,6 +48,15 @@ export const TRACE_SPECS: TraceSpec[] = [
       '(salto hacia atrás). El destino se forma con los 4 bits altos de `PC + 4`, el índice de 26 bits y dos ceros; ' +
       'no escribe registros ni memoria.',
   },
+  {
+    file: 'traza_R.md',
+    title: 'Traza tipo R',
+    address: 0x30,
+    datasetId: 'estandar',
+    intro:
+      'Instrucción `slt $t5, $t4, $t3` real del programa (núcleo de comparación con signo de Selection Sort): ' +
+      'compara `A[1] = 4` contra `A[0] = 25` con `ALUctl = 0111` (SLT con signo), produce `1` en `ALUOut` y escribe `$t5` en WB.',
+  },
 ];
 
 const SIGNAL_MEANING: Record<keyof ControlSignals, string> = {
@@ -72,6 +81,16 @@ const reg = (index: number) => `${REGISTER_NAMES[index]} ($${index})`;
 const word = (value: number) => `${formatHex32(value)} (${value | 0})`;
 
 function fieldRows(fields: DecodedFields): string[] {
+  if (fields.format === 'R') {
+    return [
+      `| opcode | [31:26] | \`${bin(fields.opcode, 6)}\` | ${fields.opcode} (Tipo R) |`,
+      `| rs | [25:21] | \`${bin(fields.rs, 5)}\` | ${fields.rs} = ${REGISTER_NAMES[fields.rs]} |`,
+      `| rt | [20:16] | \`${bin(fields.rt, 5)}\` | ${fields.rt} = ${REGISTER_NAMES[fields.rt]} |`,
+      `| rd | [15:11] | \`${bin(fields.rd, 5)}\` | ${fields.rd} = ${REGISTER_NAMES[fields.rd]} |`,
+      `| shamt | [10:6] | \`${bin(fields.shamt, 5)}\` | ${fields.shamt} (siempre 0 en las 5 R) |`,
+      `| funct | [5:0] | \`${bin(fields.funct, 6)}\` | ${fields.funct} = 0x${fields.funct.toString(16).toUpperCase().padStart(2, '0')} (${fields.mnemonic}) |`,
+    ];
+  }
   if (fields.format === 'J') {
     return [
       `| opcode | [31:26] | \`${bin(fields.opcode, 6)}\` | ${fields.opcode} (j) |`,

@@ -17,7 +17,7 @@ Las mismas tres verificaciones corren automáticamente en GitHub Actions en cada
 
 ## 2. Resultado por suite
 
-Ejecución sobre `main` + la rama `docs/trazas-y-resultados`: **101/101 pruebas en verde**, `typecheck` sin errores y `build` correcto.
+Ejecución sobre `main` (con simulador visual, trazas R/I/J y presets sincronizados): **111/111 pruebas en verde**, `typecheck` sin errores y `build` correcto.
 
 | Archivo (`VERIF/tests/`) | Qué verifica | Pruebas | Resultado |
 |---|---|---|---|
@@ -26,8 +26,9 @@ Ejecución sobre `main` + la rama `docs/trazas-y-resultados`: **101/101 pruebas 
 | `isa.test.ts` | Ejecución de cada instrucción en `MipsCpu` etapa por etapa (IF→ID→EX→MEM→WB), buffers, memorias y errores de PC | 13 | ✅ |
 | `integration.test.ts` | Casos de integración de la consigna (pág. 5), ensamblados desde texto y ejecutados en la CPU | 9 | ✅ |
 | `algorithm.test.ts` | Selection Sort con las 3 entradas, instrucciones ejecutadas hasta `fin`, imágenes `.hex` actualizadas y ejemplo `tipo_j` | 9 | ✅ |
-| `traces.test.ts` | Las trazas `traza_I.md` y `traza_J.md` coinciden con la ejecución real en `MipsCpu` | 3 | ✅ |
-| **Total** | | **101** | **✅** |
+| `datapathView.test.ts` | Modelo visual del datapath multiciclo (progresión estricta sin *peek-ahead*, tablas de entradas/salidas en binario/decimal, cero `0x`, presets `.asm` y errores visuales) | 9 | ✅ |
+| `traces.test.ts` | Las trazas `traza_R.md`, `traza_I.md` y `traza_J.md` coinciden con la ejecución real en `MipsCpu` | 4 | ✅ |
+| **Total** | | **111** | **✅** |
 
 ## 3. Cobertura de lo que pide la consigna (pág. 5)
 
@@ -44,7 +45,7 @@ Ejecución sobre `main` + la rama `docs/trazas-y-resultados`: **101/101 pruebas 
 | Error del ensamblador | `integration.test.ts` caso 7 y la sección de diagnósticos de `assembler.test.ts` |
 | Acceso de datos inválido | `integration.test.ts` caso 8 (desalineado y fuera de rango, sin alterar registros ni memoria) |
 | Algoritmo con tres entradas, incluida una de borde | `algorithm.test.ts` (sección 4 de este reporte) |
-| Traza por formato con PC, bytes, palabra, campos, controles, buffers y estado antes/después | `VERIF/traces/traza_I.md`, `VERIF/traces/traza_J.md` (la de tipo R, `traza_R.md`, la agrega Alejandro el Día 7) |
+| Traza por formato con PC, bytes, palabra, campos, controles, buffers y estado antes/después | `VERIF/traces/traza_R.md`, `VERIF/traces/traza_I.md` y `VERIF/traces/traza_J.md` (validadas automáticamente en `traces.test.ts`) |
 
 ## 4. Selection Sort: esperado vs observado
 
