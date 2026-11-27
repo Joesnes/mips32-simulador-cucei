@@ -51,7 +51,7 @@ describe('Selection Sort - programa', () => {
   it('la imagen .hex guardada en el repositorio coincide con la que genera el ensamblador', () => {
     for (const file of ['selection_sort', 'examples/tipo_r', 'examples/tipo_i', 'examples/tipo_j']) {
       const result = assemble(fs.readFileSync(path.join(programsDir, `${file}.asm`), 'utf-8'));
-      const saved = fs.readFileSync(path.join(programsDir, `${file}.hex`), 'utf-8');
+      const saved = fs.readFileSync(path.join(programsDir, `${file}.hex`), 'utf-8').replace(/\r\n/g, '\n');
       expect(saved).toBe(result.hexImage);
       expect(result.bytes.map(formatHexByte).join('\n') + '\n').toBe(saved);
     }
